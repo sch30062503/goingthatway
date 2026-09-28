@@ -59,7 +59,7 @@ function jobCard(j) {
       <dt>Route</dt><dd>${esc(j.from_town)} → ${esc(j.to_town)}, ${fmtDate(j.job_date)}${j.deadline_time ? ", by " + fmtTime(j.deadline_time) : ", any time"}</dd>
       <dt>Sender</dt><dd>${esc(j.sender_name)} · ${phoneLink(j.sender_phone)}</dd>
       <dt>Pickup</dt><dd>${esc(j.pickup_address || "–")}</dd><dt>Drop-off</dt><dd>${esc(j.drop_address || "–")}</dd>
-      <dt>Size / cover</dt><dd>${esc(j.size)} · $${j.cover} cover · ${j.handover === "route" ? "meets on route" : "door to door"}</dd>
+      <dt>Size</dt><dd>${esc(j.size)} · ${j.handover === "route" ? "meets on route" : "door to door"} · not insured (trial)</dd>
       <dt>Price</dt><dd class="num">$${Math.round(j.price_estimate || 0)} all in · driver ~$${driverPay(j) ?? "?"}</dd>
       ${j.listing_url ? `<dt>Listing</dt><dd><a href="${esc(j.listing_url)}" target="_blank" rel="noopener">Open listing</a></dd>` : ""}
       ${j.description ? `<dt>Notes</dt><dd>${esc(j.description)}</dd>` : ""}

@@ -24,7 +24,7 @@ const contactFields = (who) => { const m = memo.get(); return `
   <div class="field"><label for="c-name">Your name</label><input id="c-name" autocomplete="given-name" required value="${esc(m.name || "")}"></div>
   <div class="field"><label for="c-phone">Mobile</label><input id="c-phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="021 123 4567" value="${esc(m.phone || "")}"></div>
   <p class="fine" style="grid-column:1/-1">We'll text you to confirm before your ${who} goes live. Your name and number are never shown publicly.</p>`; };
-const banned = `<label class="check"><input type="checkbox" id="c-ok" required> <span>It's not dangerous goods, cash, drugs, weapons or a live animal, and I'm happy to be texted about this post.</span></label>`;
+const banned = `<label class="check"><input type="checkbox" id="c-ok" required> <span>It's worth less than $500, it's not dangerous goods, cash, drugs, weapons or a live animal, and I understand items aren't insured during the trial.</span></label>`;
 const notConnected = () => db ? "" : `<div class="err">The site isn't connected to its database yet, so posts can't be saved. (Setup step: fill in config.js.)</div>`;
 
 // ---------- SEND ----------
@@ -53,7 +53,6 @@ function send() {
         <div class="field"><label for="j-dl">Arrival</label><select id="j-dl"><option value="">Any time that day</option><option value="by">By a set time (+25%)</option></select></div>
         <div class="field"><label for="j-dlt">Arrive by</label><input id="j-dlt" type="time" value="13:00"></div>
         <div class="field full"><label for="j-hand">Handover</label><select id="j-hand"><option value="door">Door to door</option><option value="route">Meet the driver on the route (cheapest)</option></select></div>
-        <div class="field full"><label for="j-cover">Cover if lost or damaged</label><select id="j-cover"><option value="500">Up to $500, included</option><option value="1000">Up to $1,000, +$5</option><option value="2000">Up to $2,000, +$10</option></select></div>
         <div class="field full"><label for="j-desc">Anything the driver should know?</label><textarea id="j-desc" placeholder="e.g. Seller will help load. Keep upright."></textarea></div>
       </div></details>
       <div id="j-price"></div>
@@ -79,7 +78,8 @@ function updPrice() {
   const e = estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time, cover: j.cover });
   if (!e) { box.innerHTML = `<p class="fine">Pick two different towns to see a price.</p>`; return; }
   box.innerHTML = `<div class="allin"><span>Estimated all-in price</span><b class="num">$${e.total}</b></div>
-    <p class="fine" style="margin-top:6px">${e.onRoute} km. Covered up to $${j.cover.toLocaleString("en-NZ")} if lost or damaged. The final price is confirmed by text before anything is booked; you pay on delivery.</p>
+    <p class="fine" style="margin-top:6px">${e.onRoute} km. The final price is confirmed by text before anything is booked; you pay on delivery.</p>
+    <div class="note" style="margin-top:6px"><b>Trial service: items aren't insured yet.</b> We take photos at pickup and drop-off and handle everything with care, but please don't send anything worth more than $500.</div>
     ${e.prem ? `<div class="note" style="margin-top:6px">Includes a $${e.prem} premium for a set arrival time, paid to the driver. Delays like road closures, crashes or weather can still happen. If it arrives after your set time, you only pay the normal rate ($${e.normal}).</div>` : ""}`;
 }
 
@@ -186,7 +186,7 @@ function info() {
       <div><span class="num">$23.95/h</span><span>for the driver's extra time, at the NZ minimum wage.</span></div>
       <div><span class="num">+25%</span><span>on km if you need a set arrival time (min $3). If it's late, you pay the normal rate.</span></div>
       <div><span class="num">$0</span><span>detour if you meet the driver on the route.</span></div>
-      <div><span class="num">$500</span><span>cover included. Up to $1,000 for +$5, or $2,000 for +$10.</span></div></div>`)}
+      <div><span class="num">Trial</span><span>items aren't insured yet, so please only send things worth less than $500. Cover is coming before we open to everyone.</span></div></div>`)}
     ${sec("Pick-up-only buys", `<p class="sub">Pay the seller as usual. The driver collects it, photographs it so you can check it matches the listing, and brings it to you.</p>`)}
     ${sec("For businesses", `<p class="sub">Post jobs first thing. If no driver takes it by your cut-off, we text you to book your usual courier. <button class="linkbtn" data-tab-link="business" type="button">Register interest</button></p>`)}
     ${sec("Staying safe", `<ul class="plainlist"><li>We text every poster before anything goes live</li><li>Drivers' licences and vehicles checked before their first job</li><li>Addresses only shared with your driver</li><li>Photos at pickup and drop-off</li><li>Pay on delivery</li></ul>`)}
@@ -254,7 +254,7 @@ document.addEventListener("submit", async e => {
     if (j.from_town === j.to_town) return showErr("#j-err", "Pick two different towns.");
     if (!j.job_date || j.job_date < todayISO()) return showErr("#j-err", "Pick today or a later day.");
     if (!checkContact("#j-err")) return;
-    if (!$("#c-ok").checked) return showErr("#j-err", "Please tick the box to confirm it's not a banned item.");
+    if (!$("#c-ok").checked) return showErr("#j-err", "Please tick the box to confirm the item is under $500 and not a banned item.");
     showErr("#j-err", "");
     const est = estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time, cover: j.cover });
     const row = { ...j, price_estimate: est?.total ?? null };
