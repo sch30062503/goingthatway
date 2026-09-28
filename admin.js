@@ -18,6 +18,56 @@ const phoneLink = p => p ? `<a href="tel:${esc(String(p).replace(/\s/g, ""))}">$
 const btnCopy = (label, text) => `<button class="btn small" type="button" data-copy="${esc(text)}" data-label="${label}">${label}</button>`;
 const tripOf = j => data.trips.find(t => t.id === j.matched_trip);
 const verified = uid => !!data.profiles.find(p => p.id === uid)?.verified_driver;
+const profileOf = uid => data.profiles.find(p => p.id === uid) || {};
+const ID_LABEL = { driver_licence: "Driver licence", passport: "Passport", kiwi_access: "Kiwi Access card", other: "Other photo ID" };
+const idChip = st => st === "verified" ? `<span class="chip g">ID verified</span>` : st === "pending" ? `<span class="chip y">ID being checked</span>` : `<span class="chip">ID not verified</span>`;
+
+// Show a member's uploaded documents (only the admin can read them)
+async function showDocs(root = document) {
+  for (const el of root.querySelectorAll("[data-docs]")) {
+    const uid = el.dataset.docs;
+    const { data: files, error } = await db.storage.from("id-docs").list(uid, { sortBy: { column: "created_at", order: "asc" } });
+    if (error || !files?.length) { el.innerHTML = `<p class="fine">No documents on file${error ? ": " + esc(error.message) : "."}</p>`; continue; }
+    const paths = files.map(f => `${uid}/${f.name}`);
+    const { data: signed } = await db.storage.from("id-docs").createSignedUrls(paths, 600);
+    el.dataset.paths = paths.join("|");
+    el.innerHTML = `<div class="photos">${paths.map(p => { const u = signed?.find(s => s.path === p)?.signedUrl; const k = p.split("/")[1].split("-")[0]; return u ? `<a href="${esc(u)}" target="_blank" rel="noopener" style="width:150px"><img src="${esc(u)}" alt="${esc(k)}" style="width:150px;height:150px"><span>${esc(k)}</span></a>` : ""; }).join("")}</div>`;
+  }
+}
+async function deleteDocs(uid) {
+  const { data: files } = await db.storage.from("id-docs").list(uid);
+  if (files?.length) { const { error } = await db.storage.from("id-docs").remove(files.map(f => `${uid}/${f.name}`)); if (error) throw error; }
+}
+function idCheckCard(p) {
+  return `<div class="card">
+    <div class="row"><span class="item">${esc(p.name || "(no name)")}</span><span class="chip y">${esc(ID_LABEL[p.id_type] || "ID")}</span></div>
+    <dl class="kv"><dt>Email</dt><dd>${esc(p.email || "")}</dd><dt>Mobile</dt><dd>${phoneLink(p.phone)}</dd><dt>Address</dt><dd>${esc(p.address || "–")}</dd></dl>
+    <div data-docs="${p.id}"><p class="fine">Loading documents…</p></div>
+    <p class="fine">Check: the name matches the account, the ID isn't expired, and the selfie is the same person as the ID photo.</p>
+    <div class="acts"><button class="btn small go" data-idok="${p.id}">Verified: delete photos</button>
+      <input id="note-${p.id}" placeholder="Reason if not (e.g. photo blurry)" style="width:auto;flex:1;min-width:160px;font-size:14px;padding:6px 8px">
+      <button class="btn small" data-idno="${p.id}">Can't verify</button></div>
+  </div>`;
+}
+function driverCheckCard(p) {
+  const plate = esc(p.vehicle_plate || "");
+  return `<div class="card">
+    <div class="row"><span class="item">${esc(p.name || "(no name)")}</span>${idChip(p.id_status)}</div>
+    <dl class="kv"><dt>Mobile</dt><dd>${phoneLink(p.phone)}</dd><dt>Address</dt><dd>${esc(p.address || "–")}</dd>
+      <dt>Licence</dt><dd>${esc(p.licence_class || "?")}</dd>
+      <dt>Vehicle</dt><dd><b class="num">${plate}</b> · ${esc(p.vehicle_make || "")} · ${esc(SPACE_LABEL[p.vehicle_space] || "")}
+        · <a href="https://www.carjam.co.nz/car/?plate=${plate}" target="_blank" rel="noopener">check on CarJam</a></dd></dl>
+    <div data-docs="${p.id}"><p class="fine">Loading documents…</p></div>
+    <p class="fine">Check: a full or restricted licence (not a learner's), not expired, name matches, selfie matches. Look up the plate: the make and model should match, and enter the WoF and rego expiry dates.</p>
+    <div class="fields" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label for="wof-${p.id}">WoF expires</label><input id="wof-${p.id}" type="date"></div>
+      <div class="field"><label for="rego-${p.id}">Rego expires</label><input id="rego-${p.id}" type="date"></div>
+    </div>
+    <div class="acts"><button class="btn small go" data-drok="${p.id}">Approve driver: delete photos</button>
+      <input id="note-${p.id}" placeholder="Reason if not" style="width:auto;flex:1;min-width:160px;font-size:14px;padding:6px 8px">
+      <button class="btn small" data-drno="${p.id}">Can't approve</button></div>
+  </div>`;
+}
 const expectedPrice = j => estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (j.job_date === j.window_end ? "express" : null), cover: 500 })?.total;
 
 // ---------- login ----------
@@ -34,7 +84,7 @@ async function load() {
     db.from("jobs").select("*").order("created_at", { ascending: false }),
     db.from("trips").select("*").order("trip_date"),
     db.from("business_interest").select("*").order("created_at", { ascending: false }),
-    db.from("profiles").select("id,verified_driver"),
+    db.from("profiles").select("*"),
   ]);
   const err = j.error || t.error || b.error || p.error;
   if (err) { $("#view").innerHTML = `<div class="err">Couldn't load data: ${esc(err.message)}. Have you run the latest database update?</div>`; return; }
@@ -52,7 +102,7 @@ function jobCard(j) {
     <dl class="kv">
       <dt>Ref / price</dt><dd class="num"><b>${jobRef(j)}</b> · $${Math.round(j.price_estimate || 0)} all in · driver $${driverFromPrice(j.price_estimate)}${priceOk ? "" : ` · <span style="color:var(--warn)">check price: expected $${exp}</span>`}</dd>
       <dt>Route</dt><dd>${esc(j.from_town)} → ${esc(j.to_town)} · ${fmtDate(j.job_date)} to ${fmtDate(j.window_end)}${j.deadline_time ? ", by " + fmtTime(j.deadline_time) : ""}</dd>
-      <dt>Sender</dt><dd>${esc(j.sender_name)} · ${phoneLink(j.sender_phone)}</dd>
+      <dt>Sender</dt><dd>${esc(j.sender_name)} · ${phoneLink(j.sender_phone)} ${idChip(profileOf(j.user_id).id_status)}</dd>
       ${j.seller_name || j.seller_phone ? `<dt>Seller</dt><dd>${esc(j.seller_name || "")} · ${phoneLink(j.seller_phone)}</dd>` : ""}
       <dt>Collect</dt><dd>${esc(j.pickup_address || "–")} · ${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? " · " + esc(j.pickup_hours) : ""}${j.pickup_notes ? " · " + esc(j.pickup_notes) : ""}</dd>
       <dt>Deliver</dt><dd>${esc(j.drop_address || "–")}</dd>
@@ -64,7 +114,7 @@ function jobCard(j) {
       ${j.delivered_at ? `<dt>Delivered</dt><dd>${new Date(j.delivered_at).toLocaleString("en-NZ")}</dd>` : ""}
     </dl>
     <div class="acts">
-      ${j.status === "new" && j.payment === "unpaid" ? `<button class="btn small go" data-golive="${j.id}">Payment received: go live</button>${btnCopy("Copy payment reminder", T.payReminder(j))}` : ""}
+      ${j.status === "new" && j.payment === "unpaid" ? `<button class="btn small go" data-golive="${j.id}"${profileOf(j.user_id).id_status === "verified" ? "" : ` disabled title="Verify the sender's ID first"`}>Payment received: go live</button>${profileOf(j.user_id).id_status === "verified" ? "" : `<span class="fine">Verify the sender's ID first (ID checks).</span>`}${btnCopy("Copy payment reminder", T.payReminder(j))}` : ""}
       ${j.status === "open" ? btnCopy("Copy 'it's live' text", T.paidLive(j)) + btnCopy("Copy 'no driver yet' text", T.noDriver(j)) : ""}
       <label class="chip" style="display:inline-flex;gap:6px;align-items:center">Payment ${paySel}</label>
       ${j.status === "delivered" && j.payment === "paid" ? `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-dpaid="${j.id}"${j.driver_paid ? " checked" : ""} style="width:auto"> Driver paid</label>` : ""}
@@ -86,7 +136,7 @@ function tripCard(t) {
       <dt>Vehicle</dt><dd>${esc(SPACE_LABEL[t.space])}${t.vehicle ? " · " + esc(t.vehicle) : ""}${t.space_note ? " · " + esc(t.space_note) : ""}</dd>
       ${jobs.length ? `<dt>Jobs</dt><dd>${jobs.map(j => `${esc(j.item)} (${esc(j.status)})`).join(", ")}</dd>` : ""}
     </dl>
-    <div class="acts">${v ? "" : `<button class="btn small go" data-verify="${t.user_id}">Licence and vehicle checked: verify driver</button>${btnCopy("Copy welcome text", T.driverWelcome(t))}`}</div>
+    ${v ? "" : `<p class="fine">This driver isn't approved yet. Check them under Driver checks.</p>`}
     <textarea class="tmpl" hidden aria-label="Text to copy"></textarea>
   </div>`;
 }
@@ -109,14 +159,16 @@ function payouts() {
 function render() {
   const J = s => data.jobs.filter(j => s.includes(j.status));
   const toPay = data.jobs.filter(j => j.status === "new" && j.payment === "unpaid");
-  const newDrivers = data.trips.filter(t => !verified(t.user_id) && t.status === "new");
+  const idChecks = data.profiles.filter(p => p.id_status === "pending");
+  const drChecks = data.profiles.filter(p => p.driver_status === "pending");
   const live = J(["open", "matched", "collected"]);
   const upcoming = data.trips.filter(t => t.trip_date >= todayISO() && ["open", "new"].includes(t.status));
   const owed = data.jobs.filter(j => ["delivered", "no_show"].includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid).length;
-  const tabs = [["pay", "Payments to check", toPay.length], ["drivers", "New drivers", newDrivers.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0]];
+  const tabs = [["pay", "Payments to check", toPay.length], ["ids", "ID checks", idChecks.length], ["drivers", "Driver checks", drChecks.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0]];
   const body = {
     pay: toPay.map(jobCard).join("") || `<div class="empty">No payments to check.</div>`,
-    drivers: newDrivers.map(tripCard).join("") || `<div class="empty">No new drivers waiting.</div>`,
+    ids: idChecks.map(idCheckCard).join("") || `<div class="empty">No IDs waiting to be checked.</div>`,
+    drivers: drChecks.map(driverCheckCard).join("") || `<div class="empty">No drivers waiting to be checked.</div>`,
     live: live.map(jobCard).join("") || `<div class="empty">No live jobs.</div>`,
     trips: upcoming.map(tripCard).join("") || `<div class="empty">No upcoming trips.</div>`,
     payouts: payouts(),
@@ -125,7 +177,7 @@ function render() {
   }[tab];
   const bankWarn = bankSet() ? "" : `<div class="err">Add your business bank account to config.js, so senders see where to pay.</div>`;
   $("#outBtn").hidden = false;
-  setTimeout(() => showPhotos(db), 0);
+  setTimeout(() => { showPhotos(db); showDocs(); }, 0);
   $("#view").innerHTML = bankWarn + `<nav class="a-tabs">${tabs.map(([k, l, n]) => `<button data-tab="${k}" aria-selected="${tab === k}">${l}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("")}<button class="btn small" id="refresh" style="margin-left:auto">Refresh</button></nav><section>${body}</section>`;
 }
 
@@ -148,6 +200,17 @@ document.addEventListener("click", async e => {
   if (e.target.closest("#outBtn")) { await db.auth.signOut(); return loginView(); }
   const c = e.target.closest("[data-copy]"); if (c) return copy(c.dataset.copy, c);
   const gl = e.target.closest("[data-golive]"); if (gl) return update("jobs", gl.dataset.golive, { payment: "paid", status: "open" });
+  const busyBtn = async (btn, fn) => { btn.disabled = true; const l = btn.textContent; btn.textContent = "Working…"; try { await fn(); await load(); } catch (err) { btn.disabled = false; btn.textContent = l; alertBox(err.message || String(err)); } };
+  const ok = e.target.closest("[data-idok]");
+  if (ok) return busyBtn(ok, async () => { const uid = ok.dataset.idok; const { error } = await db.rpc("admin_review_id", { p_user: uid, p_ok: true, p_note: null }); if (error) throw error; await deleteDocs(uid); });
+  const no = e.target.closest("[data-idno]");
+  if (no) return busyBtn(no, async () => { const uid = no.dataset.idno; const note = ($("#note-" + uid)?.value || "").trim() || null; const { error } = await db.rpc("admin_review_id", { p_user: uid, p_ok: false, p_note: note }); if (error) throw error; await deleteDocs(uid); });
+  const dok = e.target.closest("[data-drok]");
+  if (dok) return busyBtn(dok, async () => { const uid = dok.dataset.drok; const wof = $("#wof-" + uid)?.value || null, rego = $("#rego-" + uid)?.value || null;
+    const { error } = await db.rpc("admin_review_driver", { p_user: uid, p_ok: true, p_wof: wof, p_rego: rego, p_note: null }); if (error) throw error; await deleteDocs(uid); });
+  const dno = e.target.closest("[data-drno]");
+  if (dno) return busyBtn(dno, async () => { const uid = dno.dataset.drno; const note = ($("#note-" + uid)?.value || "").trim() || null;
+    const { error } = await db.rpc("admin_review_driver", { p_user: uid, p_ok: false, p_wof: null, p_rego: null, p_note: note }); if (error) throw error; await deleteDocs(uid); });
   const vf = e.target.closest("[data-verify]");
   if (vf) { const { error } = await db.rpc("admin_verify_driver", { p_user: vf.dataset.verify, p_ok: true }); if (error) return alertBox(error.message); return load(); }
   const pa = e.target.closest("[data-payall]");

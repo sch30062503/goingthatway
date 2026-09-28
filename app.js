@@ -11,14 +11,27 @@ const memo = {
   get() { try { return JSON.parse(localStorage.getItem("gtw-contact") || "{}"); } catch { return {}; } },
   set(v) { try { localStorage.setItem("gtw-contact", JSON.stringify({ ...memo.get(), ...v })); } catch {} },
 };
-async function ensureSession() {
+// Signed-in member and their profile (verification status etc.)
+const me = { user: null, profile: null };
+async function loadMe() {
+  if (!db) return;
   const { data } = await db.auth.getSession();
-  if (data.session) return data.session;
-  const { data: d2, error } = await db.auth.signInAnonymously();
-  if (error) throw error;
-  return d2.session;
+  const u = data.session?.user;
+  me.user = u && !u.is_anonymous ? u : null;
+  me.profile = null;
+  if (me.user) { const { data: p } = await db.from("profiles").select("*").eq("id", me.user.id).single(); me.profile = p || null; }
+  const b = $("#mineBtn"); if (b) b.textContent = me.user ? "My account" : "Sign in";
 }
-async function myId() { if (!db) return null; const { data } = await db.auth.getSession(); return data.session?.user?.id || null; }
+async function ensureSession() { if (!me.user) throw new Error("Please sign in first"); return me.user; }
+async function myId() { return me.user?.id || null; }
+const idOk = () => ["pending", "verified"].includes(me.profile?.id_status);
+const driverOk = () => ["pending", "verified"].includes(me.profile?.driver_status);
+const STATUS_CHIP = { none: ["Not started", ""], pending: ["Being checked", "y"], verified: ["Verified", "g"], rejected: ["Needs another go", ""] };
+const chip = st => { const [t, c] = STATUS_CHIP[st || "none"]; return `<span class="chip ${c}">${t}</span>`; };
+function gate(title, body, btnLabel, target) {
+  return `<div class="card" style="border:2px solid var(--sign)"><h3>${title}</h3><p class="sub">${body}</p><button class="btn go" type="button" data-tab-link="${target}">${btnLabel}</button></div>`;
+}
+const postingAs = () => `<p class="fine" style="grid-column:1/-1">Posting as <b>${esc(me.profile?.name || me.user?.email || "")}</b> · ${esc(me.profile?.phone || "")}. Change these under My account. Your details are never shown publicly.</p>`;
 
 // ---------- small pieces ----------
 const v = id => ($("#" + id)?.value || "").trim();
@@ -48,6 +61,9 @@ function payPanel(j) {
 // =====================================================================
 function send() {
   const pickup = sendMode === "pickup";
+  const g = !db ? "" : !me.user ? gate("Create a free account to send", "It takes a minute. Everyone on Going That Way is ID-checked once, so drivers and senders know who they're dealing with.", "Sign up or sign in", "account")
+    : !idOk() ? gate("Verify your ID first", "Upload a photo of your ID and a selfie. We check it once, then delete the photos. It takes about 2 minutes.", "Verify my ID", "account") : "";
+  if (g) return `<section><h2>${pickup ? "Bought something pick-up only in another town?" : "Send it with someone going that way"}</h2>${g}</section>`;
   return `<section>
     <h2>${pickup ? "Bought something pick-up only in another town?" : "Send it with someone going that way"}</h2>
     <div class="seg" role="tablist">
@@ -71,7 +87,8 @@ function send() {
         <div class="field full"><label for="j-pm">How can the driver collect it?</label><select id="j-pm">${Object.entries(PICKUP_LABEL).map(([k, lab]) => `<option value="${k}">${lab}</option>`).join("")}</select></div>
         <div class="field full" id="pm-hours-f"><label for="j-ph" id="pm-hours-l">When is someone there?</label><input id="j-ph" placeholder="e.g. weekdays 8 am to 5 pm, or any time"></div>
         <div class="field full" id="pm-notes-f" hidden><label for="j-pn" id="pm-notes-l">Where is it left?</label><input id="j-pn" placeholder="e.g. under the carport. Only your driver sees this."></div>
-        ${contactFields("We'll text you if anything changes.")}
+        ${postingAs()}
+        ${me.profile?.id_status === "pending" ? `<div class="note" style="grid-column:1/-1">Your ID is being checked. You can post now; your job goes live once your ID is verified and it's paid.</div>` : ""}
       </div>
       <details class="more"><summary>More options</summary><div class="fields">
         <div class="field"><label for="j-from-d">Earliest pickup</label><input id="j-from-d" type="date" min="${todayISO()}" value="${todayISO()}"></div>
@@ -97,7 +114,7 @@ function jobValues() {
     deadline_time: v("j-dl") === "by" ? (v("j-dlt") || null) : null,
     pickup_mode: pm, handover: pm === "meet" ? "route" : "door",
     pickup_hours: pm === "left_out" ? "any time" : (v("j-ph") || null), pickup_notes: v("j-pn") || null,
-    description: v("j-desc") || null, cover: 500, sender_name: v("c-name"), sender_phone: v("c-phone"),
+    description: v("j-desc") || null, cover: 500, sender_name: me.profile?.name || "", sender_phone: me.profile?.phone || "",
   };
 }
 function jobPrice(j) {
@@ -126,6 +143,9 @@ function updPrice() {
 // DRIVE
 // =====================================================================
 function drive() {
+  const g = !db ? "" : !me.user ? gate("Create a free account to drive", "Sign up, then apply to drive with your licence and vehicle details. We check them once.", "Sign up or sign in", "account")
+    : !driverOk() ? gate("Apply to drive", "Add your driver licence, a selfie and your vehicle's number plate. We check your licence, WoF and rego once, then you can take jobs.", "Apply to drive", "account") : "";
+  if (g) return `<section><h2>Heading between Christchurch and Timaru today?</h2>${g}</section>`;
   return `<section>
     <h2>Heading between Christchurch and Timaru today?</h2>
     <p class="sub">Post your trip and see paid jobs on your route straight away. Take the ones that suit you.</p>
@@ -138,16 +158,16 @@ function drive() {
         <div class="field full"><label for="t-ta">Arriving at</label><input id="t-ta" required placeholder="Street, suburb, or e.g. Timaru CBD" value="${esc(memo.get().tta || "")}"></div>
         <div class="field"><label for="t-date">Day</label><input id="t-date" type="date" min="${todayISO()}" value="${todayISO()}" required></div>
         <div class="field"><label for="t-time">Leaving about</label><input id="t-time" type="time" value="08:00"></div>
-        <div class="field"><label for="t-space">Space</label><select id="t-space">${Object.entries(SPACE_LABEL).map(([k, lab]) => `<option value="${k}"${k === (memo.get().tspace || "ute") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
+        <div class="field"><label for="t-space">Space</label><select id="t-space">${Object.entries(SPACE_LABEL).map(([k, lab]) => `<option value="${k}"${k === (memo.get().tspace || me.profile?.vehicle_space || "ute") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="field"><label for="t-det">Max detour</label><select id="t-det"><option value="5">5 km</option><option value="10">10 km</option><option value="20" selected>20 km</option><option value="30">30 km</option></select></div>
-        ${contactFields("")}
+        ${postingAs()}
+        ${me.profile?.driver_status === "pending" ? `<div class="note" style="grid-column:1/-1">We're checking your licence and vehicle. You can post trips now; they go live once you're approved.</div>` : ""}
       </div>
       <details class="more"><summary>More options</summary><div class="fields">
-        <div class="field full"><label for="t-veh">Your vehicle</label><input id="t-veh" placeholder="e.g. Toyota Hilux double cab" value="${esc(memo.get().tveh || "")}"></div>
+        <div class="field full"><label for="t-veh">Your vehicle</label><input id="t-veh" placeholder="e.g. Toyota Hilux double cab" value="${esc(memo.get().tveh || me.profile?.vehicle_make || "")}"></div>
         <div class="field full"><label for="t-note">Space available</label><input id="t-note" placeholder="e.g. Open tray 1.5 × 1.5 m, straps"></div>
         <div class="field full"><label class="check"><input type="checkbox" id="t-reg"> <span>I do this run most weeks</span></label></div>
       </div></details>
-      <p class="fine">New drivers: before your first job we check your licence and vehicle once. After that, your trips go live instantly.</p>
       <div id="t-err"></div>
       <button class="btn go" type="submit">Post my trip and see jobs</button>
     </form></div>
@@ -248,9 +268,74 @@ async function loadBoard() {
 // =====================================================================
 // MY POSTS
 // =====================================================================
-function mine() {
+function mine() { return account(); }
+const ID_LABEL = { driver_licence: "NZ driver licence", passport: "Passport", kiwi_access: "Kiwi Access card", other: "Other government photo ID" };
+const fileField = (id, label, hint, capture) => `<div class="field full"><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*"${capture ? ` capture="${capture}"` : ""} required>${hint ? `<span class="hint">${hint}</span>` : ""}</div>`;
+function account() {
+  if (!db) return `<section><h2>My account</h2>${notConnected()}</section>`;
+  if (!me.user) return `<section>
+    <h2>Sign in or create an account</h2>
+    <div class="card"><h3>Sign in</h3><form id="siForm" novalidate><div class="fields">
+      <div class="field full"><label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username" required></div>
+      <div class="field full"><label for="si-pass">Password</label><input id="si-pass" type="password" autocomplete="current-password" required></div>
+    </div><div id="si-err"></div><button class="btn go" type="submit">Sign in</button>
+    <p class="fine">Forgotten your password? Text us and we'll reset it.</p></form></div>
+    <div class="card"><h3>New here? Create a free account</h3><form id="suForm" novalidate><div class="fields">
+      <div class="field full"><label for="su-name">Full name</label><input id="su-name" autocomplete="name" required></div>
+      <div class="field full"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email" required></div>
+      <div class="field full"><label for="su-pass">Password</label><input id="su-pass" type="password" autocomplete="new-password" minlength="8" required><span class="hint">At least 8 characters</span></div>
+      <div class="field"><label for="su-phone">Mobile</label><input id="su-phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="021 123 4567"></div>
+      <div class="field"><label for="su-addr">Home address</label><input id="su-addr" autocomplete="street-address" required></div>
+    </div>
+    <label class="check"><input type="checkbox" id="su-ok" required> <span>I'm 18 or over. I understand Going That Way checks everyone's ID once: my ID photo and selfie are only seen by the Going That Way admin, used only to confirm who I am, and deleted once checked.</span></label>
+    <div id="su-err"></div><button class="btn go" type="submit">Create account</button></form></div>
+  </section>`;
+  const P = me.profile || {}, idDone = ["pending", "verified"].includes(P.id_status), needLicence = !(P.id_type === "driver_licence" && idDone);
   setTimeout(loadMine, 0);
-  return `<section><h2>My posts</h2><p class="sub">Jobs and trips posted from this phone or computer.</p><div id="mine" class="empty">Loading…</div></section>`;
+  return `<section>
+    <div class="row"><h2>My account</h2><button class="btn small" id="signOut" type="button">Sign out</button></div>
+
+    <div class="card"><div class="row"><h3>1. Your ID check</h3>${chip(P.id_status)}</div>
+      ${P.id_status === "verified" ? `<p class="sub">Verified. Your photos have been deleted. You can send anything on the site.</p>`
+      : P.id_status === "pending" ? `<p class="sub">Thanks, we're checking your ${esc(ID_LABEL[P.id_type] || "ID")}. You can post jobs now; they go live once you're verified.</p>`
+      : `${P.id_status === "rejected" ? `<div class="err">We couldn't verify that one${P.review_note ? `: ${esc(P.review_note)}` : ""}. Please try again.</div>` : ""}
+        <p class="sub">Everyone is ID-checked once. Only the Going That Way admin sees your photos, and they're deleted once checked.</p>
+        <form id="idForm" novalidate><div class="fields">
+          <div class="field full"><label for="id-type">Type of ID</label><select id="id-type">${Object.entries(ID_LABEL).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select><span class="hint">To drive, it must be your driver licence.</span></div>
+          ${fileField("id-photo", "Photo of your ID", "The side with your photo. Make sure it's sharp and nothing's covered.", "environment")}
+          ${fileField("id-selfie", "A selfie", "Just your face, clearly lit, so we can match it to the ID.", "user")}
+        </div><div id="id-err"></div><button class="btn go" type="submit">Send for checking</button></form>`}
+    </div>
+
+    <div class="card"><div class="row"><h3>2. Driving</h3>${chip(P.driver_status)}</div>
+      ${P.driver_status === "verified" ? `<p class="sub">Approved to drive: ${esc(P.vehicle_make || "")} ${esc(P.vehicle_plate || "")} (${esc(SPACE_LABEL[P.vehicle_space] || "")}). WoF to ${fmtDate(P.wof_expiry)}, rego to ${fmtDate(P.rego_expiry)}.</p><button class="btn go" type="button" data-tab-link="drive">Post a trip</button>`
+      : P.driver_status === "pending" ? `<p class="sub">Thanks, we're checking your licence and your vehicle's WoF and rego. You can post trips now; they go live once you're approved.</p>`
+      : `${P.driver_status === "rejected" ? `<div class="err">We couldn't approve that${P.review_note ? `: ${esc(P.review_note)}` : ""}. Please try again.</div>` : ""}
+        <p class="sub">Earn from trips you're already making. We need your licence and vehicle details once.</p>
+        <form id="drForm" novalidate><div class="fields">
+          <div class="field"><label for="dr-class">Licence</label><select id="dr-class"><option value="full">Full</option><option value="restricted">Restricted</option></select></div>
+          <div class="field"><label for="dr-space">Space you usually have</label><select id="dr-space">${Object.entries(SPACE_LABEL).map(([k, l]) => `<option value="${k}"${k === "ute" ? " selected" : ""}>${l}</option>`).join("")}</select></div>
+          <div class="field"><label for="dr-plate">Number plate</label><input id="dr-plate" required autocapitalize="characters" placeholder="ABC123"></div>
+          <div class="field"><label for="dr-make">Make and model</label><input id="dr-make" required placeholder="e.g. Toyota Hilux"></div>
+          ${needLicence ? fileField("dr-lic", "Photo of your driver licence", "The side with your photo.", "environment") + fileField("dr-selfie", "A selfie", "So we can match it to your licence.", "user") : `<p class="fine" style="grid-column:1/-1">We'll use the licence you sent for your ID check.</p>`}
+        </div><p class="fine">Learner licences can't drive for Going That Way. We check your vehicle's WoF and rego from the plate.</p><div id="dr-err"></div><button class="btn go" type="submit">Apply to drive</button></form>`}
+    </div>
+
+    <div class="card"><h3>3. Your details</h3><form id="pfForm" novalidate><div class="fields">
+      <div class="field full"><label for="pf-name">Full name</label><input id="pf-name" value="${esc(P.name || "")}" required></div>
+      <div class="field full"><label>Email</label><input value="${esc(me.user.email || "")}" disabled></div>
+      <div class="field"><label for="pf-phone">Mobile</label><input id="pf-phone" type="tel" value="${esc(P.phone || "")}" required></div>
+      <div class="field"><label for="pf-addr">Home address</label><input id="pf-addr" value="${esc(P.address || "")}" required></div>
+    </div><div id="pf-err"></div><button class="btn" type="submit">Save details</button></form></div>
+
+    <h2 style="margin-top:8px">My posts</h2><div id="mine" class="empty">Loading…</div>
+  </section>`;
+}
+async function uploadIdDoc(kind, file) {
+  const blob = await shrinkImage(file, 1800, 0.8);
+  const path = `${me.user.id}/${kind}-${Date.now()}.jpg`;
+  const { error } = await db.storage.from("id-docs").upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (error) throw error;
 }
 const JOB_STATUS = { new: ["Waiting for payment", "y"], open: ["Paid · waiting for a driver", "g"], matched: ["Driver on the way", "g"], collected: ["Collected · on its way", "g"], delivered: ["Delivered", "g"], cancelled: ["Cancelled", ""], no_show: ["No-show", ""] };
 const TRIP_STATUS = { new: ["Waiting for licence check", "y"], open: ["Live", "g"], full: ["Full", ""], done: ["Done", "g"], cancelled: ["Cancelled", ""] };
@@ -309,14 +394,14 @@ function info() {
       <div><span class="num">$0</span><span>detour if you meet the driver on the route.</span></div></div>`)}
     ${sec("Collection and no-shows", `<p class="sub">Say how it can be collected: someone's home (and when), left out, at a business, or meet on the route. Drivers text you before they set off. If they arrive when you said and it isn't available, a no-show fee covering their trip is kept from your payment, and the rest refunded.</p>`)}
     ${sec("For businesses", `<p class="sub">Post jobs first thing. If no driver takes it by your cut-off, we text you to book your usual courier. <button class="linkbtn" data-tab-link="business" type="button">Register interest</button></p>`)}
-    ${sec("Trial service", `<ul class="plainlist"><li>Items aren't insured yet, so please only send things worth less than $500</li><li>Drivers' licences and vehicles are checked before their first job</li><li>Addresses are only shared with your driver</li><li>Your payment is held until delivery is confirmed</li></ul>`)}
+    ${sec("Trial service", `<ul class="plainlist"><li>Items aren't insured yet, so please only send things worth less than $500</li><li>Everyone is ID-checked once with a photo ID and selfie; the photos are deleted once checked</li><li>Drivers' licences, WoF and rego are checked before their first job</li><li>Drivers can check an item before accepting it, and refuse anything sealed or suspicious</li><li>Addresses are only shared with your driver</li><li>Your payment is held until delivery is confirmed</li></ul>`)}
   </section>`;
 }
 
 // =====================================================================
 // rendering & events
 // =====================================================================
-const views = { send, drive, board, info, mine, business };
+const views = { send, drive, board, info, mine, business, account };
 function render() {
   $("#view").innerHTML = views[cur]();
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === cur));
@@ -348,7 +433,8 @@ async function save(table, row, errBox, btn) {
 document.addEventListener("click", async e => {
   const tab = e.target.closest(".tabs [data-tab]"); if (tab) return go(tab.dataset.tab);
   const link = e.target.closest("[data-tab-link]"); if (link) return go(link.dataset.tabLink);
-  if (e.target.closest("#mineBtn")) return go("mine");
+  if (e.target.closest("#mineBtn")) return go("account");
+  if (e.target.closest("#signOut")) { await db.auth.signOut(); await loadMe(); return go("account"); }
   const md = e.target.closest("[data-mode]"); if (md) { sendMode = md.dataset.mode; return render(); }
   const cx = e.target.closest("[data-cancel]");
   if (cx) {
@@ -414,6 +500,45 @@ document.addEventListener("change", e => { if (e.target.closest("#jobForm")) { u
 document.addEventListener("submit", async e => {
   e.preventDefault();
   const f = e.target, btn = f.querySelector("button[type=submit]");
+  const busy = async (box, fn) => { btn.disabled = true; const l = btn.textContent; btn.textContent = "Please wait…"; try { await fn(); } catch (err) { console.error(err); showErr(box, esc(err.message || String(err))); } finally { btn.disabled = false; btn.textContent = l; } };
+  if (f.id === "siForm") return busy("#si-err", async () => {
+    const { error } = await db.auth.signInWithPassword({ email: v("si-email"), password: $("#si-pass").value });
+    if (error) throw new Error(/invalid/i.test(error.message) ? "That email and password don't match." : error.message);
+    await loadMe(); go(me.profile && !idOk() ? "account" : cur === "account" ? "send" : cur);
+  });
+  if (f.id === "suForm") return busy("#su-err", async () => {
+    const name = v("su-name"), email = v("su-email"), pass = $("#su-pass").value, phone = v("su-phone"), address = v("su-addr");
+    if (!name || !email || !address) throw new Error("Please fill in every field.");
+    if (pass.length < 8) throw new Error("Please use a password of at least 8 characters.");
+    if (!validPhone(phone)) throw new Error("Please enter a NZ mobile number, like 021 123 4567.");
+    if (!$("#su-ok").checked) throw new Error("Please tick the box to continue.");
+    const { data, error } = await db.auth.signUp({ email, password: pass, options: { data: { name, phone, address } } });
+    if (error) throw new Error(/registered|exists/i.test(error.message) ? "There's already an account with that email. Sign in instead." : error.message);
+    if (!data.session) { f.closest(".card").innerHTML = `<div class="ok"><h3>Check your email</h3><p class="sub">We've sent a link to ${esc(email)} to confirm your account.</p></div>`; return; }
+    await loadMe(); go("account");
+  });
+  if (f.id === "pfForm") return busy("#pf-err", async () => {
+    const row = { name: v("pf-name"), phone: v("pf-phone"), address: v("pf-addr") };
+    if (!row.name || !row.address) throw new Error("Please fill in your name and address.");
+    if (!validPhone(row.phone)) throw new Error("Please enter a NZ mobile number, like 021 123 4567.");
+    const { error } = await db.from("profiles").update(row).eq("id", me.user.id); if (error) throw error;
+    await loadMe(); showErr("#pf-err", ""); btn.textContent = "Saved";
+  });
+  if (f.id === "idForm") return busy("#id-err", async () => {
+    const idf = $("#id-photo").files?.[0], sf = $("#id-selfie").files?.[0];
+    if (!idf || !sf) throw new Error("Please add both a photo of your ID and a selfie.");
+    await uploadIdDoc("id", idf); await uploadIdDoc("selfie", sf);
+    const { error } = await db.rpc("submit_id", { p_type: v("id-type") }); if (error) throw error;
+    await loadMe(); go("account");
+  });
+  if (f.id === "drForm") return busy("#dr-err", async () => {
+    const plate = v("dr-plate"), make = v("dr-make");
+    if (!plate || !make) throw new Error("Please add your number plate and vehicle.");
+    const lic = $("#dr-lic"), sel = $("#dr-selfie");
+    if (lic) { if (!lic.files?.[0] || !sel.files?.[0]) throw new Error("Please add a photo of your licence and a selfie."); await uploadIdDoc("licence", lic.files[0]); await uploadIdDoc("selfie", sel.files[0]); }
+    const { error } = await db.rpc("apply_driver", { p_licence_class: v("dr-class"), p_plate: plate, p_make: make, p_space: v("dr-space") }); if (error) throw error;
+    await loadMe(); go("account");
+  });
   if (f.id === "jobForm") {
     const j = jobValues();
     if (!j.item) return showErr("#j-err", "Please say what it is.");
@@ -423,7 +548,7 @@ document.addEventListener("submit", async e => {
     if (j.pickup_mode === "left_out" && !j.pickup_notes) return showErr("#j-err", "Please say where it's left, so the driver can find it.");
     if (!j.window_end || j.window_end < todayISO()) return showErr("#j-err", "Pick a deliver-by day, today or later.");
     if (j.job_date > j.window_end) return showErr("#j-err", "The earliest pickup day is after the deliver-by day.");
-    if (!checkContact("#j-err")) return;
+    if (!j.sender_name || !validPhone(j.sender_phone)) return showErr("#j-err", "Please add your name and mobile under My account first.");
     if (!$("#c-ok").checked) return showErr("#j-err", "Please tick the box to agree to the trial terms.");
     showErr("#j-err", "");
     const row = { ...j, price_estimate: jobPrice(j)?.total ?? null };
@@ -436,11 +561,11 @@ document.addEventListener("submit", async e => {
   }
   if (f.id === "tripForm") {
     const row = { from_town: v("t-from"), to_town: v("t-to"), from_suburb: v("t-fa") || null, to_suburb: v("t-ta") || null, trip_date: v("t-date"), depart_time: v("t-time") || null,
-      space: v("t-space"), max_detour_km: +v("t-det"), vehicle: v("t-veh") || null, space_note: v("t-note") || null, regular: $("#t-reg").checked, driver_name: v("c-name"), driver_phone: v("c-phone") };
+      space: v("t-space"), max_detour_km: +v("t-det"), vehicle: v("t-veh") || null, space_note: v("t-note") || null, regular: $("#t-reg").checked, driver_name: me.profile?.name || "", driver_phone: me.profile?.phone || "" };
     if (row.from_town === row.to_town) return showErr("#t-err", "Pick two different towns.");
     if (!row.from_suburb || !row.to_suburb) return showErr("#t-err", "Please say roughly where you're leaving from and arriving at. A suburb or \"CBD\" is fine.");
     if (!row.trip_date || row.trip_date < todayISO()) return showErr("#t-err", "Pick today or a later day.");
-    if (!checkContact("#t-err")) return;
+    if (!row.driver_name || !validPhone(row.driver_phone)) return showErr("#t-err", "Please add your name and mobile under My account first.");
     showErr("#t-err", "");
     memo.set({ tfa: row.from_suburb, tta: row.to_suburb, tspace: row.space, tveh: row.vehicle || "" });
     const saved = await save("trips", row, "#t-err", btn);
@@ -458,4 +583,6 @@ document.addEventListener("submit", async e => {
   }
 });
 
-render();
+$("#view").innerHTML = `<div class="empty">Loading…</div>`;
+loadMe().then(render);
+if (db) db.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT") loadMe().then(render); });

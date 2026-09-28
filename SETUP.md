@@ -8,8 +8,10 @@ About 20 minutes. Everything here is free.
    - Name: `goingthatway`
    - Region: **Sydney** (closest to NZ)
    - Save the database password somewhere safe. You won't need to give it to anyone.
-2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql`, `003_driver_claims.sql` and `004_photos.sql`, so a new project only needs `schema.sql`.)
-3. Go to **Authentication** → **Sign In / Providers** and turn on **Allow anonymous sign-ins**. This lets people post without creating an account.
+2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `005_accounts.sql`, so a new project only needs `schema.sql`.)
+3. Go to **Authentication** → **Sign In / Providers**:
+   - Turn **off** **Allow anonymous sign-ins**. Everyone now makes an account.
+   - Under **Email**, turn **off** **Confirm email** for the trial. Supabase's free email only reaches your own team, so confirmation emails wouldn't arrive. Everyone is ID-checked by you instead.
 4. Create your admin login: **Authentication** → **Users** → **Add user** → **Create new user**. Enter your email and a strong password, and tick **Auto Confirm User**.
 5. Make that login an admin. Back in **SQL Editor**, run this with your email in it:
 
@@ -43,11 +45,14 @@ About 20 minutes. Everything here is free.
 
 ## Day to day
 
+**Everyone** signs up with name, email, password, mobile and address, then sends a photo ID and a selfie.
+0. **ID checks:** compare the selfie with the ID photo and check the name and expiry. Tap **Verified: delete photos**, or type a reason and tap **Can't verify**.
+
 **Senders** post a job, see the price and pay by bank transfer with their job reference (GTW-XXXXXX).
-1. **Payments to check:** when the money arrives, tap **Payment received: go live**. The job goes on the board.
+1. **Payments to check:** (the sender's ID must be verified first) when the money arrives, tap **Payment received: go live**. The job goes on the board.
 
 **Drivers** post a trip, often on the morning they're going, and see paid jobs on their route.
-2. **New drivers:** a new driver's first trip waits here. Copy the welcome text, check their licence photo and plate, then tap **verify driver**. From then on their trips go live instantly and they can take jobs themselves.
+2. **Driver checks:** check the licence (full or restricted, not expired, selfie matches). Tap **check on CarJam** for the plate, and enter the WoF and rego expiry dates. Tap **Approve driver: delete photos**. Their trips then go live instantly and they can take jobs themselves.
 3. Drivers tap **Take it**, text the sender or seller to confirm pickup, then take a **pickup photo** (marks it collected) and a **drop-off photo** (marks it delivered). Photos show on the job in admin and in the sender's My posts. You don't need to do anything.
 4. **Payouts:** delivered jobs appear here with each driver's total. Pay them by bank transfer, then tap **Mark all paid**.
 
