@@ -2,8 +2,8 @@
 // Both values are safe to publish; the database's privacy rules protect the data.
 // NEVER put the service_role key or the database password here.
 window.GTW_CONFIG = {
-  SUPABASE_URL: "https://YOUR-PROJECT.supabase.co",
-  SUPABASE_ANON_KEY: "YOUR-ANON-PUBLIC-KEY",
+  SUPABASE_URL: "https://ofhzamdelbhkiwjsnyxr.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_5q7OZNO03JLtv_v4FXdZWg_mFXNS-Vp",
   // Shown to customers as the number to text with questions
   CONTACT_TEXT: "Text us any time",
 };
