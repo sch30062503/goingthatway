@@ -80,3 +80,38 @@ const mapWithJob = (j, t) => `${mapNormal(t)}&waypoints=${place(j.pickup_address
 const jobRef = j => "GTW-" + String(j.id).replace(/-/g, "").slice(0, 6).toUpperCase();
 const PICKUP_LABEL = { home: "Someone's home", left_out: "Left out for collection", business: "At a business", meet: "Meet on the route" };
 const bankSet = () => { const c = window.GTW_CONFIG || {}; return c.BANK_ACCOUNT && !c.BANK_ACCOUNT.startsWith("00-0000"); };
+
+// ---------- Photos ----------
+// Shrink a phone photo to max 1600px JPEG before uploading (fast on rural reception, small storage)
+async function shrinkImage(file, max = 1600, quality = 0.72) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise(res => c.toBlob(res, "image/jpeg", quality));
+  } finally { URL.revokeObjectURL(url); }
+}
+const PHOTO_LABEL = { pickup: "Pickup", dropoff: "Drop-off", no_show: "Nobody there" };
+// Fill every [data-photos="<job id>"] element with that job's photos (signed links last an hour)
+async function showPhotos(db, root = document) {
+  const els = [...root.querySelectorAll("[data-photos]")]; if (!els.length || !db) return;
+  const ids = [...new Set(els.map(e => e.dataset.photos))];
+  const { data: rows } = await db.from("job_photos").select("*").in("job_id", ids).order("created_at");
+  if (!rows?.length) return;
+  const { data: signed } = await db.storage.from("job-photos").createSignedUrls(rows.map(r => r.path), 3600);
+  const urlFor = p => signed?.find(s => s.path === p)?.signedUrl;
+  for (const el of els) {
+    const mine = rows.filter(r => r.job_id === el.dataset.photos);
+    el.innerHTML = mine.length ? `<div class="photos">${mine.map(r => { const u = urlFor(r.path); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="${PHOTO_LABEL[r.kind]} photo"><span>${PHOTO_LABEL[r.kind]} · ${new Date(r.created_at).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}</span></a>` : ""; }).join("")}</div>` : "";
+  }
+}
+async function uploadJobPhoto(db, jobId, kind, file) {
+  const blob = await shrinkImage(file);
+  const path = `${jobId}/${kind}-${Date.now()}.jpg`;
+  const up = await db.storage.from("job-photos").upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (up.error) throw up.error;
+  const { error } = await db.from("job_photos").insert({ job_id: jobId, kind, path });
+  if (error) throw error;
+}

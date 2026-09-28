@@ -8,7 +8,7 @@ About 20 minutes. Everything here is free.
    - Name: `goingthatway`
    - Region: **Sydney** (closest to NZ)
    - Save the database password somewhere safe. You won't need to give it to anyone.
-2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` and `003_driver_claims.sql`, so a new project only needs `schema.sql`.)
+2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql`, `003_driver_claims.sql` and `004_photos.sql`, so a new project only needs `schema.sql`.)
 3. Go to **Authentication** → **Sign In / Providers** and turn on **Allow anonymous sign-ins**. This lets people post without creating an account.
 4. Create your admin login: **Authentication** → **Users** → **Add user** → **Create new user**. Enter your email and a strong password, and tick **Auto Confirm User**.
 5. Make that login an admin. Back in **SQL Editor**, run this with your email in it:
@@ -48,7 +48,7 @@ About 20 minutes. Everything here is free.
 
 **Drivers** post a trip, often on the morning they're going, and see paid jobs on their route.
 2. **New drivers:** a new driver's first trip waits here. Copy the welcome text, check their licence photo and plate, then tap **verify driver**. From then on their trips go live instantly and they can take jobs themselves.
-3. Drivers tap **Take it**, text the sender or seller to confirm pickup, then mark **Collected** and **Delivered**. You don't need to do anything.
+3. Drivers tap **Take it**, text the sender or seller to confirm pickup, then take a **pickup photo** (marks it collected) and a **drop-off photo** (marks it delivered). Photos show on the job in admin and in the sender's My posts. You don't need to do anything.
 4. **Payouts:** delivered jobs appear here with each driver's total. Pay them by bank transfer, then tap **Mark all paid**.
 
 **If something goes wrong**

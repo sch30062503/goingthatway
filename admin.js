@@ -69,6 +69,7 @@ function jobCard(j) {
       <label class="chip" style="display:inline-flex;gap:6px;align-items:center">Payment ${paySel}</label>
       ${j.status === "delivered" && j.payment === "paid" ? `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-dpaid="${j.id}"${j.driver_paid ? " checked" : ""} style="width:auto"> Driver paid</label>` : ""}
     </div>
+    ${["matched", "collected", "delivered", "no_show"].includes(j.status) ? `<div data-photos="${j.id}"></div>` : ""}
     ${j.status === "no_show" ? `<p class="fine">No-show: refund the sender their payment minus the driver's pay ($${driverFromPrice(j.price_estimate)}), then set payment to part_refunded. The driver's pay goes in the payout.</p>` : ""}
     <textarea class="tmpl" hidden aria-label="Text to copy"></textarea>
   </div>`;
@@ -124,6 +125,7 @@ function render() {
   }[tab];
   const bankWarn = bankSet() ? "" : `<div class="err">Add your business bank account to config.js, so senders see where to pay.</div>`;
   $("#outBtn").hidden = false;
+  setTimeout(() => showPhotos(db), 0);
   $("#view").innerHTML = bankWarn + `<nav class="a-tabs">${tabs.map(([k, l, n]) => `<button data-tab="${k}" aria-selected="${tab === k}">${l}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("")}<button class="btn small" id="refresh" style="margin-left:auto">Refresh</button></nav><section>${body}</section>`;
 }
 

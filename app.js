@@ -177,8 +177,8 @@ async function tripJobsPanel(t, verified) {
 function takenJobCard(j, t) {
   const who = j.kind === "pickup" && j.seller_phone ? { name: j.seller_name || "the seller", phone: j.seller_phone } : { name: j.sender_name, phone: j.sender_phone };
   const confirmMsg = `Hi ${who.name}, it's ${t.driver_name} from Going That Way. I'm collecting the ${j.item} ${t.trip_date === todayISO() ? "today" : "on " + fmtDate(t.trip_date)}, around ${fmtTime(t.depart_time) || "(time)"}. Can you confirm it'll be ready? Thanks!`;
-  const step = j.status === "matched" ? `<div class="acts" style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small go" data-step="${j.id}:collected">Collected</button><button class="btn small" data-release="${j.id}">Give it back</button></div>`
-    : j.status === "collected" ? `<button class="btn go" data-step="${j.id}:delivered">Delivered</button>` : `<span class="chip g">Delivered. Thanks! Paid in the weekly payout.</span>`;
+  const step = j.status === "matched" ? `<div style="display:flex;gap:6px;flex-wrap:wrap"><label class="btn go camera">Collected: take pickup photo<input type="file" accept="image/*" capture="environment" data-photo="${j.id}:pickup"></label><button class="btn small" data-release="${j.id}">Give it back</button><label class="btn small camera">Nobody there? Photo the door<input type="file" accept="image/*" capture="environment" data-photo="${j.id}:no_show"></label></div>`
+    : j.status === "collected" ? `<label class="btn go camera">Delivered: take drop-off photo<input type="file" accept="image/*" capture="environment" data-photo="${j.id}:dropoff"></label>` : `<span class="chip g">Delivered. Thanks! Paid in the weekly payout.</span>`;
   return `<div class="card" style="border:2px solid var(--mark)">
     <div class="row"><span class="item">${esc(j.item)}</span><span class="chip g num">You get $${driverFromPrice(j.price_estimate)}</span></div>
     <dl style="display:grid;grid-template-columns:92px 1fr;gap:3px 10px;font-size:13.5px;margin:0">
@@ -193,7 +193,8 @@ function takenJobCard(j, t) {
       ${j.status === "matched" ? `<a class="btn small go" href="${smsLink(who.phone, confirmMsg)}">Text ${esc(who.name.split(" ")[0])} to confirm pickup</a>` : ""}
       <a class="btn small" href="${mapWithJob(j, t)}" target="_blank" rel="noopener">Route with this job</a>
     </div>
-    <p class="fine">Don't set off for the pickup until they've confirmed, unless it's left out. Take a photo at pickup and at drop-off.</p>
+    <p class="fine">Don't set off for the pickup until they've confirmed, unless it's left out. The photos confirm collection and delivery, and protect you if anything's questioned.</p>
+    <div data-photos="${j.id}"></div>
     ${step}
   </div>`;
 }
@@ -277,12 +278,13 @@ async function loadMine() {
     const canCancel = ["new", "open"].includes(r.status);
     parts.push(`<div class="card" style="margin-bottom:8px"><div class="row"><span class="item">${esc(r.item)}</span><span class="chip ${c}">${s}</span></div>${plate(r.from_town, r.to_town)}
       <div class="meta"><span>by ${fmtDate(r.window_end || r.job_date)}</span><span class="num">$${Math.round(r.price_estimate || 0)} · ${jobRef(r)}</span>${canCancel ? `<button class="btn small" data-cancel="jobs:${r.id}" style="margin-left:auto">Cancel</button>` : ""}</div>
-      ${["matched", "collected", "delivered"].includes(r.status) ? `<div data-driverfor="${r.id}" class="fine">Finding driver details…</div>` : ""}
+      ${["matched", "collected", "delivered"].includes(r.status) ? `<div data-driverfor="${r.id}" class="fine">Finding driver details…</div><div data-photos="${r.id}"></div>` : ""}
       ${r.status === "new" && r.payment === "unpaid" ? payPanel(r) : ""}</div>`);
   }
   box.className = "";
   box.innerHTML = parts.join("") || `<div class="empty">You haven't posted anything from this device yet.</div>`;
   for (const r of (t.data || [])) { const el = document.querySelector(`[data-trippanel="${r.id}"]`); if (el) { el.className = ""; el.innerHTML = await tripJobsPanel(r, verified); } }
+  showPhotos(db);
   for (const r of (j.data || [])) {
     const el = document.querySelector(`[data-driverfor="${r.id}"]`); if (!el) continue;
     const { data } = await db.rpc("my_job_driver", { p_job: r.id });
@@ -387,9 +389,26 @@ async function refreshTripPanel(tripId) {
   const [{ data: t }, uid] = await Promise.all([db.from("trips").select("*").eq("id", tripId).single(), myId()]);
   const { data: p } = await db.from("profiles").select("verified_driver").eq("id", uid).single();
   lastTrip = t;
+  setTimeout(() => showPhotos(db), 0);
   box.innerHTML = `<div class="ok"><h3>${t.status === "open" ? "Your trip is live" : "Trip posted, thanks!"}</h3><p class="sub">${esc(t.from_town)} → ${esc(t.to_town)}, ${fmtDate(t.trip_date)}. You can find it any time under My posts.</p></div>` + await tripJobsPanel(t, !!p?.verified_driver);
 }
 document.addEventListener("input", e => { if (e.target.closest("#jobForm")) updPrice(); });
+document.addEventListener("change", async e => {
+  const inp = e.target.closest("[data-photo]"); if (!inp || !inp.files?.[0]) return;
+  const [job, kind] = inp.dataset.photo.split(":"), btn = inp.closest("label"), label = btn.firstChild.textContent;
+  btn.firstChild.textContent = "Uploading photo…"; inp.disabled = true;
+  try {
+    await uploadJobPhoto(db, job, kind, inp.files[0]);
+    if (kind === "pickup" || kind === "dropoff") {
+      const { error } = await db.rpc("job_progress", { p_job: job, p_step: kind === "pickup" ? "collected" : "delivered" });
+      if (error) throw error;
+    } else {
+      btn.outerHTML = `<div class="note">Photo saved. We'll contact the sender and sort out the no-show fee; you'll still be paid for your trip.</div>`;
+      return showPhotos(db);
+    }
+    return cur === "mine" ? loadMine() : refreshTripPanel(lastTrip?.id);
+  } catch (err) { console.error(err); btn.firstChild.textContent = label; inp.disabled = false; inp.value = ""; btn.insertAdjacentHTML("afterend", `<div class="err">Photo didn't upload. Check your signal and try again. <span style="display:block;font-size:12px;opacity:.8">Details: ${esc(err.message || err)}</span></div>`); }
+});
 document.addEventListener("change", e => { if (e.target.closest("#jobForm")) { updPickupMode(); updPrice(); } });
 
 document.addEventListener("submit", async e => {
