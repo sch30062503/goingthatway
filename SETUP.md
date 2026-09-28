@@ -36,7 +36,9 @@ About 20 minutes. Everything here is free.
 
 - Open the site on your phone. Post a test job and a test trip.
 - Open `…/goingthatway/admin.html` and sign in with your admin email and password.
-- Your test posts should be under **To approve**. Approve both, match the job to the trip, and check that the public **Board** shows them without names, numbers or addresses.
+- Your test job is under **Payments to check**: tap **Payment received: go live**. Your test trip is under **New drivers**: tap **verify driver**.
+- On your phone, go to **My posts**. Your trip should list the job. Tap **Take it**, then **Collected**, then **Delivered**, and check it appears under **Payouts** in admin.
+- Check the public **Board** never shows names, numbers or addresses.
 - Cancel the test posts from **My posts** on your phone when you're done.
 
 ## Day to day
