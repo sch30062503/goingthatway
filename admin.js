@@ -20,10 +20,10 @@ const ref = j => "GTW-" + j.id.replace(/-/g, "").slice(0, 6).toUpperCase();
 const cfg = window.GTW_CONFIG || {};
 
 const T = {
-  jobConfirm: j => `Hi ${j.sender_name}, it's Going That Way. Got your request to move: ${j.item}, ${j.from_town} to ${j.to_town} on ${fmtDate(j.job_date)}${j.deadline_time ? ", arriving by " + fmtTime(j.deadline_time) : ""}. Estimated price $${Math.round(j.price_estimate || 0)} all in, paid on delivery. Reply YES to confirm and we'll find a driver.`,
+  jobConfirm: j => `Hi ${j.sender_name}, it's Going That Way. Got your request to move: ${j.item}, ${j.from_town} to ${j.to_town} on ${fmtDate(j.job_date)}${j.deadline_time ? ", arriving by " + fmtTime(j.deadline_time) : ""}. Estimated price $${Math.round(j.price_estimate || 0)} all in. Once we've found a driver, you pay to lock in the booking and we hold the money until it's delivered. Reply YES to confirm and we'll find a driver.`,
   tripConfirm: t => `Hi ${t.driver_name}, thanks for posting your ${t.from_town} to ${t.to_town} trip on ${fmtDate(t.trip_date)}. Before your first job, please reply with a photo of your driver licence and your number plate. We'll text you any jobs on your route.`,
-  toDriver: (j, t) => `Hi ${t.driver_name}, a job on your ${t.from_town} to ${t.to_town} trip (${fmtDate(t.trip_date)}): ${j.item} (${j.size}). Pickup: ${j.pickup_address || j.from_town}, ${j.from_town}. Drop-off: ${j.drop_address || j.to_town}, ${j.to_town}${j.deadline_time ? ", by " + fmtTime(j.deadline_time) : ""}. Pays you about $${driverPay(j)}, paid by bank transfer weekly. Your route with this job added (check the extra km): ${mapWithJob(j, t)} Your normal route for comparison: ${mapNormal(t)} Sender: ${j.sender_name} ${j.sender_phone}. Job ref ${ref(j)}. Reply YES to take it.`,
-  toSender: (j, t) => `Good news ${j.sender_name}: ${t.driver_name} is driving ${t.from_town} to ${t.to_town} on ${fmtDate(t.trip_date)} and will bring your ${j.item}. They'll text you before pickup. Price $${Math.round(j.price_estimate || 0)}. Please pay once it's delivered, by bank transfer to ${cfg.BANK_NAME || "Going That Way"} ${cfg.BANK_ACCOUNT || "(account)"}, reference ${ref(j)}.`,
+  toDriver: (j, t) => `Hi ${t.driver_name}, a job on your ${t.from_town} to ${t.to_town} trip (${fmtDate(t.trip_date)}): ${j.item} (${j.size}). Pickup: ${j.pickup_address || j.from_town}, ${j.from_town}. Drop-off: ${j.drop_address || j.to_town}, ${j.to_town}${j.deadline_time ? ", by " + fmtTime(j.deadline_time) : ""}. Pays you about $${driverPay(j)}. The sender has already paid; we hold it and pay you by bank transfer in the weekly payout after the drop-off photo. Your route with this job added (check the extra km): ${mapWithJob(j, t)} Your normal route for comparison: ${mapNormal(t)} Sender: ${j.sender_name} ${j.sender_phone}. Job ref ${ref(j)}. Reply YES to take it.`,
+  toSender: (j, t) => `Good news ${j.sender_name}: ${t.driver_name} is driving ${t.from_town} to ${t.to_town} on ${fmtDate(t.trip_date)} and will bring your ${j.item}. To lock in the booking, please pay $${Math.round(j.price_estimate || 0)} now by bank transfer to ${cfg.BANK_NAME || "Going That Way"} ${cfg.BANK_ACCOUNT || "(account)"}, reference ${ref(j)}. We hold it and only pay the driver once your item is delivered. If anything falls through, you get a full refund. They'll text you before pickup.`,
 };
 
 async function copy(text, btn) {
@@ -62,7 +62,7 @@ function jobCard(j) {
   const sug = j.status === "open" ? suggestTrips(j) : [];
   const matched = j.matched_trip ? data.trips.find(t => t.id === j.matched_trip) : null;
   return `<div class="card">
-    <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span></div>${statusSel("jobs", j, ["new", "open", "matched", "delivered", "cancelled"])}</div>
+    <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span> ${payChip(j)}</div>${statusSel("jobs", j, ["new", "open", "matched", "delivered", "cancelled"])}</div>
     <dl class="kv">
       <dt>Route</dt><dd>${esc(j.from_town)} → ${esc(j.to_town)}, ${fmtDate(j.job_date)}${j.deadline_time ? ", by " + fmtTime(j.deadline_time) : ", any time"}</dd>
       <dt>Sender</dt><dd>${esc(j.sender_name)} · ${phoneLink(j.sender_phone)}</dd>
@@ -76,12 +76,29 @@ function jobCard(j) {
     </dl>
     <div class="acts">
       ${j.status === "new" ? `<button class="btn small go" data-set="jobs:${j.id}:open">Approve</button>${btnCopy("Copy confirm text", T.jobConfirm(j))}` : ""}
-      ${matched ? btnCopy("Copy text to driver", T.toDriver(j, matched)) + btnCopy("Copy text to sender", T.toSender(j, matched)) : ""}
+      ${matched ? btnCopy("1. Copy payment text to sender", T.toSender(j, matched)) : ""}
+      ${matched && j.payment === "paid" ? btnCopy("2. Copy job text to driver", T.toDriver(j, matched)) : ""}
+      ${matched || ["delivered", "cancelled"].includes(j.status) ? `<label class="chip" style="display:inline-flex;gap:6px;align-items:center">Payment <select data-pay="${j.id}" style="width:auto;padding:2px 6px;font-size:13px">${["unpaid", "paid", "refunded", "part_refunded"].map(o => `<option${o === j.payment ? " selected" : ""}>${o}</option>`).join("")}</select></label>` : ""}
+      ${j.status === "delivered" && j.payment === "paid" ? `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-dpaid="${j.id}"${j.driver_paid ? " checked" : ""} style="width:auto"> Driver paid</label>` : ""}
     </div>
     ${sug.length ? `<div class="label">Drivers on this route</div>${sug.map(t => `<div class="sugg"><span>${esc(t.driver_name)} · ${esc(SPACE_LABEL[t.space])} · leaving ${fmtTime(t.depart_time) || "?"} from ${esc(t.from_suburb || t.from_town)} · <a href="${esc(mapWithJob(j, t))}" target="_blank" rel="noopener">check detour</a></span><button class="btn small go" data-match="${j.id}:${t.id}">Match</button></div>`).join("")}`
       : j.status === "open" ? `<p class="fine">No matching trips yet. Businesses: text them before their courier cut-off.</p>` : ""}
+    ${matched && j.payment !== "paid" && j.status === "matched" ? `<p class="fine">Send the job to the driver once the sender's payment has arrived.</p>` : ""}
     <textarea class="tmpl" hidden aria-label="Text to copy"></textarea>
   </div>`;
+}
+const payChip = j => j.payment === "paid" ? `<span class="chip g">Paid, held</span>` : j.payment === "refunded" ? `<span class="chip">Refunded</span>` : j.payment === "part_refunded" ? `<span class="chip">Part refunded</span>` : ["matched", "delivered"].includes(j.status) ? `<span class="chip y">Awaiting payment</span>` : "";
+function payouts() {
+  const owed = data.jobs.filter(j => j.status === "delivered" && j.payment === "paid" && !j.driver_paid && j.matched_trip);
+  const byDriver = {};
+  owed.forEach(j => { const t = data.trips.find(x => x.id === j.matched_trip); if (!t) return;
+    const k = t.driver_phone; (byDriver[k] ||= { name: t.driver_name, phone: t.driver_phone, jobs: [], total: 0 }); byDriver[k].jobs.push(j); byDriver[k].total += driverPay(j) || 0; });
+  const list = Object.values(byDriver);
+  if (!list.length) return `<div class="empty">No driver payouts owed. Delivered, paid jobs appear here until you tick "Driver paid".</div>`;
+  return list.map(d => `<div class="card"><div class="row"><span class="item">${esc(d.name)}</span><b class="num">$${d.total}</b></div>
+    <p class="sub">${phoneLink(d.phone)} · ${d.jobs.length} job${d.jobs.length > 1 ? "s" : ""}: ${d.jobs.map(j => `${esc(j.item)} (${ref(j)}, $${driverPay(j)})`).join(", ")}</p>
+    <p class="fine">Ask the driver for their bank account the first time. Use reference "GTW payout". Then tick "Driver paid" on each job, or:</p>
+    <button class="btn small go" data-payall="${d.jobs.map(j => j.id).join(",")}">Mark all ${d.jobs.length} paid</button></div>`).join("");
 }
 function tripCard(t) {
   const jobs = data.jobs.filter(j => j.matched_trip === t.id);
@@ -110,11 +127,12 @@ function render() {
   const liveJobs = data.jobs.filter(j => ["open", "matched"].includes(j.status));
   const liveTrips = data.trips.filter(t => ["open", "full"].includes(t.status));
   const past = data.jobs.filter(j => ["delivered", "cancelled"].includes(j.status));
-  const tabs = [["new", "To approve", newJobs.length + newTrips.length], ["jobs", "Jobs", liveJobs.length], ["trips", "Trips", liveTrips.length], ["biz", "Businesses", data.biz.length], ["past", "Past", 0]];
+  const tabs = [["new", "To approve", newJobs.length + newTrips.length], ["jobs", "Jobs", liveJobs.length], ["trips", "Trips", liveTrips.length], ["pay", "Payouts", data.jobs.filter(j => j.status === "delivered" && j.payment === "paid" && !j.driver_paid).length], ["biz", "Businesses", data.biz.length], ["past", "Past", 0]];
   const body = {
     new: [...newJobs.map(jobCard), ...newTrips.map(tripCard)].join("") || `<div class="empty">Nothing waiting. Nice.</div>`,
     jobs: liveJobs.map(jobCard).join("") || `<div class="empty">No live jobs.</div>`,
     trips: liveTrips.map(tripCard).join("") || `<div class="empty">No live trips.</div>`,
+    pay: payouts(),
     biz: data.biz.map(bizCard).join("") || `<div class="empty">No businesses yet.</div>`,
     past: past.map(jobCard).join("") || `<div class="empty">Nothing yet.</div>`,
   }[tab];
@@ -142,9 +160,12 @@ document.addEventListener("click", async e => {
   if (e.target.closest("#outBtn")) { await db.auth.signOut(); return loginView(); }
   const c = e.target.closest("[data-copy]"); if (c) return copy(c.dataset.copy, c);
   const s = e.target.closest("[data-set]"); if (s) { const [tb, id, st] = s.dataset.set.split(":"); return update(tb, id, { status: st }); }
+  const pa = e.target.closest("[data-payall]"); if (pa) { for (const id of pa.dataset.payall.split(",")) { await db.from("jobs").update({ driver_paid: true }).eq("id", id); } return load(); }
   const m = e.target.closest("[data-match]"); if (m) { const [jid, tid] = m.dataset.match.split(":"); return update("jobs", jid, { status: "matched", matched_trip: tid }); }
 });
 document.addEventListener("change", e => {
+  const py = e.target.closest("[data-pay]"); if (py) return update("jobs", py.dataset.pay, { payment: py.value });
+  const dp = e.target.closest("[data-dpaid]"); if (dp) return update("jobs", dp.dataset.dpaid, { driver_paid: dp.checked });
   const s = e.target.closest("[data-status]"); if (!s) return;
   const [tb, id] = s.dataset.status.split(":"); update(tb, id, { status: s.value });
 });

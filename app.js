@@ -78,7 +78,7 @@ function updPrice() {
   const e = estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time, cover: j.cover });
   if (!e) { box.innerHTML = `<p class="fine">Pick two different towns to see a price.</p>`; return; }
   box.innerHTML = `<div class="allin"><span>Estimated all-in price</span><b class="num">$${e.total}</b></div>
-    <p class="fine" style="margin-top:6px">${e.onRoute} km. The final price is confirmed by text before anything is booked; you pay on delivery.</p>
+    <p class="fine" style="margin-top:6px">${e.onRoute} km. The final price is confirmed by text. Once a driver is found you pay to book, and we hold the money until it's delivered. Full refund if it falls through.</p>
     <div class="note" style="margin-top:6px"><b>Trial service: items aren't insured yet.</b> We take photos at pickup and drop-off and handle everything with care, but please don't send anything worth more than $500.</div>
     ${e.prem ? `<div class="note" style="margin-top:6px">Includes a $${e.prem} premium for a set arrival time, paid to the driver. Delays like road closures, crashes or weather can still happen. If it arrives after your set time, you only pay the normal rate ($${e.normal}).</div>` : ""}`;
 }
@@ -181,7 +181,7 @@ async function loadMine() {
 function info() {
   const sec = (t, b) => `<div class="card"><h3>${t}</h3>${b}</div>`;
   return `<section><h2>How it works</h2>
-    ${sec("In four steps", `<ol class="steps"><li><b>Drivers post trips</b> they're already making.</li><li><b>You post what needs moving:</b> a pick-up-only buy or a parcel.</li><li><b>We text you both</b> to confirm the match and the price.</li><li><b>It's delivered.</b> Photos at pickup and drop-off; you pay on delivery.</li></ol>`)}
+    ${sec("In four steps", `<ol class="steps"><li><b>Drivers post trips</b> they're already making.</li><li><b>You post what needs moving:</b> a pick-up-only buy or a parcel.</li><li><b>We text you both</b> to confirm the match and the price.</li><li><b>You pay to book, and we hold it.</b> The driver is only paid once the drop-off photo confirms delivery. Full refund if it falls through.</li></ol>`)}
     ${sec("Pricing", `<p class="sub">One all-in price. It includes our cut, and the driver always gets their full rate.</p><div class="rates">
       <div><span class="num">5–15c/km</span><span>along the driver's route, depending on size.</span></div>
       <div><span class="num">80c/km</span><span>for the detour to your door and back.</span></div>
@@ -191,7 +191,7 @@ function info() {
       <div><span class="num">Trial</span><span>items aren't insured yet, so please only send things worth less than $500. Cover is coming before we open to everyone.</span></div></div>`)}
     ${sec("Pick-up-only buys", `<p class="sub">Pay the seller as usual. The driver collects it, photographs it so you can check it matches the listing, and brings it to you.</p>`)}
     ${sec("For businesses", `<p class="sub">Post jobs first thing. If no driver takes it by your cut-off, we text you to book your usual courier. <button class="linkbtn" data-tab-link="business" type="button">Register interest</button></p>`)}
-    ${sec("Staying safe", `<ul class="plainlist"><li>We text every poster before anything goes live</li><li>Drivers' licences and vehicles checked before their first job</li><li>Addresses only shared with your driver</li><li>Photos at pickup and drop-off</li><li>Pay on delivery</li></ul>`)}
+    ${sec("Staying safe", `<ul class="plainlist"><li>We text every poster before anything goes live</li><li>Drivers' licences and vehicles checked before their first job</li><li>Addresses only shared with your driver</li><li>Photos at pickup and drop-off</li><li>Your payment is held until delivery is confirmed</li></ul>`)}
   </section>`;
 }
 
