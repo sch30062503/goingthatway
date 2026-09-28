@@ -59,6 +59,7 @@ details.more>summary{cursor:pointer;font-weight:700;color:var(--sign);font-size:
 details.more .fields{margin-top:10px}
 
 .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:10px 14px;font-weight:700;font-size:15px;cursor:pointer}
+a.btn{display:inline-block;text-decoration:none;text-align:center}
 .btn.go{background:var(--sign);border-color:var(--sign);color:#fff}
 .btn.small{padding:6px 10px;font-size:13px}
 .btn:disabled{opacity:.6;cursor:default}

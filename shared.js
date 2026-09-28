@@ -56,3 +56,27 @@ function makeClient() {
   if (!window.supabase || !c.SUPABASE_URL || c.SUPABASE_URL.includes("YOUR-PROJECT")) return null;
   return window.supabase.createClient(c.SUPABASE_URL, c.SUPABASE_ANON_KEY);
 }
+
+// What the driver is paid from an all-in price (price = driver + 15% fee, fee at least $3)
+const driverFromPrice = p => { p = Number(p) || 0; return Math.round(p / (1 + RATE.feePct) >= RATE.feeMin / RATE.feePct ? p / (1 + RATE.feePct) : p - RATE.feeMin); };
+
+// Same-day jobs are express (+25%), like a set arrival time
+const isExpress = (jobDate, windowEnd) => jobDate && jobDate === windowEnd && windowEnd === todayISO();
+
+// Does a job fit a trip? Same direction, both ends inside the trip, room for it, and the trip day is inside the job's window
+const SPACE_FITS = { boot: ["small", "medium"], ute: ["small", "medium", "large"], trailer: ["small", "medium", "large"], van: ["small", "medium", "large"] };
+function jobFitsTrip(j, t) {
+  if (![t.from_town, t.to_town, j.from_town, j.to_town].every(x => x in KM)) return false;
+  const a = KM[t.from_town], b = KM[t.to_town], p = KM[j.from_town], d = KM[j.to_town], lo = Math.min(a, b), hi = Math.max(a, b);
+  const onRoute = (b - a) * (d - p) > 0 && p >= lo && p <= hi && d >= lo && d <= hi;
+  const inWindow = t.trip_date >= j.job_date && t.trip_date <= (j.window_end || j.job_date);
+  return onRoute && inWindow && (SPACE_FITS[t.space] || []).includes(j.size);
+}
+
+// Google Maps links for a driver: their normal route, and with the job added
+const place = (addr, town) => encodeURIComponent([addr, town, "New Zealand"].filter(Boolean).join(", "));
+const mapNormal = t => `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${place(t.from_suburb, t.from_town)}&destination=${place(t.to_suburb, t.to_town)}`;
+const mapWithJob = (j, t) => `${mapNormal(t)}&waypoints=${place(j.pickup_address, j.from_town)}%7C${place(j.drop_address, j.to_town)}`;
+const jobRef = j => "GTW-" + String(j.id).replace(/-/g, "").slice(0, 6).toUpperCase();
+const PICKUP_LABEL = { home: "Someone's home", left_out: "Left out for collection", business: "At a business", meet: "Meet on the route" };
+const bankSet = () => { const c = window.GTW_CONFIG || {}; return c.BANK_ACCOUNT && !c.BANK_ACCOUNT.startsWith("00-0000"); };

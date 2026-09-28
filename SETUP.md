@@ -8,7 +8,7 @@ About 20 minutes. Everything here is free.
    - Name: `goingthatway`
    - Region: **Sydney** (closest to NZ)
    - Save the database password somewhere safe. You won't need to give it to anyone.
-2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success".
+2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` and `003_driver_claims.sql`, so a new project only needs `schema.sql`.)
 3. Go to **Authentication** → **Sign In / Providers** and turn on **Allow anonymous sign-ins**. This lets people post without creating an account.
 4. Create your admin login: **Authentication** → **Users** → **Add user** → **Create new user**. Enter your email and a strong password, and tick **Auto Confirm User**.
 5. Make that login an admin. Back in **SQL Editor**, run this with your email in it:
@@ -41,10 +41,18 @@ About 20 minutes. Everything here is free.
 
 ## Day to day
 
-1. New posts appear in admin under **To approve**.
-2. Tap **Copy confirm text**, send it from your phone, and **Approve** once they reply.
-3. Open jobs show **Drivers on this route**. Tap **Match**, then copy the texts to the driver and the sender.
-4. After delivery, set the job to **delivered**. Take payment with a payment link or bank transfer for now.
+**Senders** post a job, see the price and pay by bank transfer with their job reference (GTW-XXXXXX).
+1. **Payments to check:** when the money arrives, tap **Payment received: go live**. The job goes on the board.
+
+**Drivers** post a trip, often on the morning they're going, and see paid jobs on their route.
+2. **New drivers:** a new driver's first trip waits here. Copy the welcome text, check their licence photo and plate, then tap **verify driver**. From then on their trips go live instantly and they can take jobs themselves.
+3. Drivers tap **Take it**, text the sender or seller to confirm pickup, then mark **Collected** and **Delivered**. You don't need to do anything.
+4. **Payouts:** delivered jobs appear here with each driver's total. Pay them by bank transfer, then tap **Mark all paid**.
+
+**If something goes wrong**
+- No driver by the deliver-by day: copy the "no driver yet" text and offer more days, meeting on the route, or a full refund.
+- No-show at pickup: set the job to **no_show**, refund the sender minus the driver's pay, and set payment to **part_refunded**. The driver's pay appears in Payouts.
+- Senders can cancel until a driver takes the job. After that, they need to contact you.
 
 ## Before a public launch
 
