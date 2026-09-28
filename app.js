@@ -221,7 +221,7 @@ async function save(table, row, errBox, btn) {
     return true;
   } catch (e) {
     console.error(e);
-    showErr(errBox, "That didn't go through. Check your connection and try again.");
+    showErr(errBox, "That didn't go through. Check your connection and try again." + (e?.message ? ` <span style="display:block;font-size:12px;opacity:.8;margin-top:4px">Details: ${esc(e.message)}</span>` : ""));
     return false;
   } finally { btn.disabled = false; btn.textContent = label; }
 }
