@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Going That Way</title>
+<meta name="description" content="Pick-up-only buys and parcels carried by people already driving between Christchurch, Ashburton and Timaru.">
+<meta name="theme-color" content="#1F6B45">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="hero">
+    <div class="brand"><h1>Going That Way</h1><button class="pill" id="mineBtn" type="button">My posts</button></div>
+    <p>Pick-up-only buys and parcels, carried by people already driving your way. Christchurch · Ashburton · Timaru.</p>
+    <span class="trial">Trial service</span>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="send" aria-selected="true">Send</button>
+    <button role="tab" data-tab="drive" aria-selected="false">Drive</button>
+    <button role="tab" data-tab="board" aria-selected="false">Board</button>
+    <button role="tab" data-tab="info" aria-selected="false">How it works</button>
+  </nav>
+
+  <main id="view"></main>
+
+  <footer class="foot">
+    <p>Going That Way is a trial service run locally in Canterbury. We use your name and number only to arrange your job, and never show them publicly.
+    <button class="linkbtn" data-tab-link="business" type="button">Business? Register interest</button></p>
+  </footer>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="shared.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
