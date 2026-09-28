@@ -44,12 +44,12 @@ function send() {
         <div class="field"><label for="j-from">${pickup ? "Seller's town" : "From"}</label><select id="j-from">${townOptions("Christchurch")}</select></div>
         <div class="field"><label for="j-to">${pickup ? "Your town" : "To"}</label><select id="j-to">${townOptions("Timaru")}</select></div>
         <div class="field"><label for="j-size">Size</label><select id="j-size">${Object.entries(SIZE_LABEL).map(([k, v]) => `<option value="${k}"${k === (pickup ? "large" : "medium") ? " selected" : ""}>${v}</option>`).join("")}</select></div>
+        <div class="field full"><label for="j-pa">${pickup ? "Seller's address" : "Pickup address"}</label><input id="j-pa" required autocomplete="off" placeholder="Street and suburb. Only your driver sees it."></div>
+        <div class="field full"><label for="j-da">Deliver to</label><input id="j-da" required autocomplete="street-address" placeholder="Street and suburb. Only your driver sees it."></div>
         <div class="field"><label for="j-date">Day</label><input id="j-date" type="date" min="${todayISO()}" value="${todayISO(1)}" required></div>
         ${contactFields("job")}
       </div>
       <details class="more"><summary>More options</summary><div class="fields">
-        <div class="field full"><label for="j-pa">${pickup ? "Seller's address or suburb" : "Pickup address"}</label><input id="j-pa" placeholder="Only shared with your driver"></div>
-        <div class="field full"><label for="j-da">Deliver to (address)</label><input id="j-da" placeholder="Only shared with your driver"></div>
         <div class="field"><label for="j-dl">Arrival</label><select id="j-dl"><option value="">Any time that day</option><option value="by">By a set time (+25%)</option></select></div>
         <div class="field"><label for="j-dlt">Arrive by</label><input id="j-dlt" type="time" value="13:00"></div>
         <div class="field full"><label for="j-hand">Handover</label><select id="j-hand"><option value="door">Door to door</option><option value="route">Meet the driver on the route (cheapest)</option></select></div>
@@ -93,6 +93,8 @@ function drive() {
       <div class="fields">
         <div class="field"><label for="t-from">From</label><select id="t-from">${townOptions("Christchurch")}</select></div>
         <div class="field"><label for="t-to">To</label><select id="t-to">${townOptions("Timaru")}</select></div>
+        <div class="field full"><label for="t-fa">Leaving from</label><input id="t-fa" required placeholder="Street, suburb, or e.g. Christchurch CBD"></div>
+        <div class="field full"><label for="t-ta">Arriving at</label><input id="t-ta" required placeholder="Street, suburb, or e.g. Timaru CBD"></div>
         <div class="field"><label for="t-date">Day</label><input id="t-date" type="date" min="${todayISO()}" value="${todayISO(1)}" required></div>
         <div class="field"><label for="t-time">Leaving about</label><input id="t-time" type="time" value="08:00"></div>
         <div class="field"><label for="t-space">Space</label><select id="t-space">${Object.entries(SPACE_LABEL).map(([k, v]) => `<option value="${k}"${k === "ute" ? " selected" : ""}>${v}</option>`).join("")}</select></div>
@@ -251,6 +253,7 @@ document.addEventListener("submit", async e => {
   if (f.id === "jobForm") {
     const j = jobValues();
     if (!j.item) return showErr("#j-err", "Please say what it is.");
+    if (!j.pickup_address || !j.drop_address) return showErr("#j-err", "Please add the pickup and delivery addresses, so your driver knows where to go. Only your driver sees them.");
     if (j.from_town === j.to_town) return showErr("#j-err", "Pick two different towns.");
     if (!j.job_date || j.job_date < todayISO()) return showErr("#j-err", "Pick today or a later day.");
     if (!checkContact("#j-err")) return;
@@ -266,8 +269,9 @@ document.addEventListener("submit", async e => {
   if (f.id === "tripForm") {
     const v = id => ($("#" + id)?.value || "").trim();
     const row = { from_town: v("t-from"), to_town: v("t-to"), trip_date: v("t-date"), depart_time: v("t-time") || null, space: v("t-space"), max_detour_km: +v("t-det"),
-      vehicle: v("t-veh") || null, space_note: v("t-note") || null, regular: $("#t-reg").checked, driver_name: v("c-name"), driver_phone: v("c-phone") };
+      from_suburb: v("t-fa") || null, to_suburb: v("t-ta") || null, vehicle: v("t-veh") || null, space_note: v("t-note") || null, regular: $("#t-reg").checked, driver_name: v("c-name"), driver_phone: v("c-phone") };
     if (row.from_town === row.to_town) return showErr("#t-err", "Pick two different towns.");
+    if (!row.from_suburb || !row.to_suburb) return showErr("#t-err", "Please say roughly where you're leaving from and arriving at. A suburb or \"CBD\" is fine. We only use it to work out detours.");
     if (!row.trip_date || row.trip_date < todayISO()) return showErr("#t-err", "Pick today or a later day.");
     if (!checkContact("#t-err")) return;
     showErr("#t-err", "");
