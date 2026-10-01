@@ -97,3 +97,30 @@ a.btn{display:inline-block;text-decoration:none;text-align:center}
 .photos img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:var(--chip)}
 .camera{position:relative;overflow:hidden}
 .camera input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+
+/* payment details with copy buttons */
+.paylines{display:flex;flex-direction:column;gap:6px}
+.payline{display:grid;grid-template-columns:80px 1fr auto;gap:8px;align-items:center;font-size:14px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.payline:last-child{border-bottom:0}
+.payline .k{color:var(--ink3)}
+.payline .v{min-width:0;overflow-wrap:anywhere}
+textarea.tmpl{min-height:80px;font-size:13px;margin-top:6px}
+.quote{background:var(--chip);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--ink2);line-height:1.45}
+
+/* progress bar on a job */
+.progress{list-style:none;margin:2px 0 0;padding:0;display:flex;gap:3px;font-size:11.5px;font-weight:700;color:var(--ink3)}
+.progress li{flex:1;min-width:0;padding-top:7px;border-top:4px solid var(--line);text-align:center;line-height:1.2}
+.progress li.done{border-color:var(--sign);color:var(--sign)}
+.progress li.now{border-color:var(--mark);color:var(--ink)}
+
+/* check it before you buy */
+.checkfirst{background:var(--soft);border-radius:8px;padding:10px}
+.checkstep{background:var(--note);color:var(--note-ink);border-radius:8px;padding:10px;font-size:13.5px;display:flex;flex-direction:column}
+.checkstep .field label{color:var(--note-ink)}
+.checkask{border:2px solid var(--mark)}
+.alert{display:block;background:var(--mark);color:var(--mark-ink);border-radius:10px;padding:12px 14px;text-decoration:none;font-size:14px}
+.again{border:2px solid var(--sign)}
+details.why>summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--sign);margin-top:6px}
+details.why .rates div{grid-template-columns:52px 1fr}
+.field label.check{font-weight:400;font-size:13.5px;color:var(--ink2)}
+.field label.check b{color:var(--ink)}

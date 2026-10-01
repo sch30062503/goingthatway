@@ -13,8 +13,11 @@ const dist = (a, b) => Math.abs(KM[b] - KM[a]);
 
 // Pricing: cheap for km the driver drives anyway, a proper rate for the detour,
 // minimum wage for the driver's extra time, +25% on km for a set arrival time.
+// Bulky items pay more per km (they need a ute or trailer) plus a loading allowance.
 const RATE = {
-  onRoute: { small: 0.05, medium: 0.08, large: 0.15 }, // $ per km along the driver's route
+  onRoute: { small: 0.05, medium: 0.08, large: 0.20 }, // $ per km along the driver's route
+  handling: { small: 0, medium: 0, large: 10 },        // loading, strapping down, unloading a bulky item
+  check: 10,            // "check it before you buy": photos from the seller's, buyer says yes or no
   detourKm: 0.80,       // $ per extra km (out and back)
   wage: 23.95,          // NZ adult minimum wage from 1 April 2026, per hour of extra time
   minsPerKm: 1,         // detour driving time
@@ -24,22 +27,38 @@ const RATE = {
   feePct: 0.15, feeMin: 3,
 };
 const COVER_FEE = { 500: 0, 1000: 5, 2000: 10 };
-const SIZE_LABEL = { small: "Small (fits on a seat)", medium: "Medium (boot or box)", large: "Large (needs a ute tray)" };
+const SIZE_LABEL = { small: "Fits on a car seat", medium: "Fits in a car boot", large: "Ute, van or trailer" };
+const SIZE_SHORT = { small: "Small", medium: "Boot-size", large: "Bulky" };
+// What people buy pick-up only, and the space each usually needs
+const ITEM_TYPES = {
+  furniture: ["Furniture (couch, table, bed, drawers)", "large"],
+  whiteware: ["Whiteware (fridge, washer, dryer)", "large"],
+  bike: ["Bike, e-bike or scooter", "large"],
+  outdoor: ["Outdoor and garden (mower, BBQ, outdoor set)", "large"],
+  building: ["Building materials (timber, doors, windows)", "large"],
+  parts: ["Car, farm or machinery parts", "medium"],
+  tools: ["Tools and equipment", "medium"],
+  boxed: ["Boxes and smaller items", "small"],
+  other: ["Something else", "medium"],
+};
+const itemTypeShort = k => (ITEM_TYPES[k]?.[0] || "").split(" (")[0];
 const SPACE_LABEL = { boot: "Car boot", ute: "Ute tray", trailer: "Trailer", van: "Van" };
 
 // Estimate what the sender pays, all in. The driver's pay is never reduced by our fee.
-function estimate({ from, to, size, handover, deadline, cover }) {
+function estimate({ from, to, size, handover, deadline, cover, check }) {
   if (!(from in KM) || !(to in KM) || from === to) return null;
   const onRoute = dist(from, to);
   const detour = handover === "route" ? 0 : 2 * RATE.typicalDetourKm * 2; // two stops, out and back
   const mins = detour * RATE.minsPerKm + 2 * RATE.minsPerStop;
   const a = RATE.onRoute[size] * onRoute, b = RATE.detourKm * detour, c = (RATE.wage / 60) * mins;
+  const h = RATE.handling[size] || 0, k = check ? RATE.check : 0;
   const prem = deadline ? Math.max(RATE.deadlineMin, (a + b) * RATE.deadlinePct) : 0;
-  const driver = a + b + c + prem;
+  const base = a + b + c + h + k, driver = base + prem;
   const fee = Math.max(RATE.feeMin, driver * RATE.feePct);
   const total = Math.round(driver + fee + (COVER_FEE[cover] || 0));
-  const normal = deadline ? Math.round(a + b + c + Math.max(RATE.feeMin, (a + b + c) * RATE.feePct) + (COVER_FEE[cover] || 0)) : total;
-  return { onRoute, detour, driver: Math.round(driver), total, normal, prem: Math.round(prem) };
+  const normal = deadline ? Math.round(base + Math.max(RATE.feeMin, base * RATE.feePct) + (COVER_FEE[cover] || 0)) : total;
+  return { onRoute, detour, driver: Math.round(driver), total, normal, prem: Math.round(prem), handling: h, check: k,
+    parts: { route: a, detour: b + c, handling: h, check: k, prem, fee } };
 }
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -79,6 +98,13 @@ const mapNormal = t => `https://www.google.com/maps/dir/?api=1&travelmode=drivin
 const mapWithJob = (j, t) => `${mapNormal(t)}&waypoints=${place(j.pickup_address, j.from_town)}%7C${place(j.drop_address, j.to_town)}`;
 const jobRef = j => "GTW-" + String(j.id).replace(/-/g, "").slice(0, 6).toUpperCase();
 const PICKUP_LABEL = { home: "Someone's home", left_out: "Left out for collection", business: "At a business", meet: "Meet on the route" };
+// Copy text to the clipboard; falls back to selecting it in a box
+async function copyText(text, btn) {
+  const lab = btn.dataset.label || btn.textContent; btn.dataset.label = lab;
+  try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
+  catch { const ta = document.createElement("textarea"); ta.value = text; ta.className = "tmpl"; btn.after(ta); ta.select(); btn.textContent = "Select and copy"; }
+  setTimeout(() => (btn.textContent = lab), 1800);
+}
 const bankSet = () => { const c = window.GTW_CONFIG || {}; return c.BANK_ACCOUNT && !c.BANK_ACCOUNT.startsWith("00-0000"); };
 
 // ---------- Photos ----------
@@ -93,7 +119,7 @@ async function shrinkImage(file, max = 1600, quality = 0.72) {
     return await new Promise(res => c.toBlob(res, "image/jpeg", quality));
   } finally { URL.revokeObjectURL(url); }
 }
-const PHOTO_LABEL = { pickup: "Pickup", dropoff: "Drop-off", no_show: "Nobody there" };
+const PHOTO_LABEL = { pickup: "Pickup", dropoff: "Drop-off", no_show: "Nobody there", check: "Check" };
 // Fill every [data-photos="<job id>"] element with that job's photos (signed links last an hour)
 async function showPhotos(db, root = document) {
   const els = [...root.querySelectorAll("[data-photos]")]; if (!els.length || !db) return;

@@ -1,0 +1,15 @@
+{
+  "name": "Going That Way",
+  "short_name": "Going That Way",
+  "description": "Pick-up-only buys and bulky items, carried by people already driving between Christchurch, Ashburton and Timaru.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EEF0EC",
+  "theme_color": "#1F6B45",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -68,7 +68,9 @@ function driverCheckCard(p) {
       <button class="btn small" data-drno="${p.id}">Can't approve</button></div>
   </div>`;
 }
-const expectedPrice = j => estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (j.job_date === j.window_end ? "express" : null), cover: 500 })?.total;
+const expectedPrice = j => estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (j.job_date === j.window_end ? "express" : null), cover: 500, check: j.check_first })?.total;
+const DRIVER_OWED = ["delivered", "no_show", "declined"];
+const CHECK_LABEL = { waiting: "photos sent, waiting for the buyer", approved: "buyer said yes", declined: "buyer said no" };
 
 // ---------- login ----------
 function loginView(msg = "") {
@@ -95,7 +97,7 @@ async function load() {
 // ---------- cards ----------
 function jobCard(j) {
   const t = tripOf(j), exp = expectedPrice(j), priceOk = exp == null || Math.abs(exp - (j.price_estimate || 0)) <= 2;
-  const statusSel = `<select data-status="jobs:${j.id}" style="width:auto;font-size:14px;padding:5px 8px">${["new", "open", "matched", "collected", "delivered", "cancelled", "no_show"].map(o => `<option${o === j.status ? " selected" : ""}>${o}</option>`).join("")}</select>`;
+  const statusSel = `<select data-status="jobs:${j.id}" style="width:auto;font-size:14px;padding:5px 8px">${["new", "open", "matched", "collected", "delivered", "cancelled", "no_show", "declined"].map(o => `<option${o === j.status ? " selected" : ""}>${o}</option>`).join("")}</select>`;
   const paySel = `<select data-pay="${j.id}" style="width:auto;padding:2px 6px;font-size:13px">${["unpaid", "paid", "refunded", "part_refunded"].map(o => `<option${o === j.payment ? " selected" : ""}>${o}</option>`).join("")}</select>`;
   return `<div class="card">
     <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span></div>${statusSel}</div>
@@ -106,7 +108,8 @@ function jobCard(j) {
       ${j.seller_name || j.seller_phone ? `<dt>Seller</dt><dd>${esc(j.seller_name || "")} · ${phoneLink(j.seller_phone)}</dd>` : ""}
       <dt>Collect</dt><dd>${esc(j.pickup_address || "–")} · ${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? " · " + esc(j.pickup_hours) : ""}${j.pickup_notes ? " · " + esc(j.pickup_notes) : ""}</dd>
       <dt>Deliver</dt><dd>${esc(j.drop_address || "–")}</dd>
-      <dt>Size</dt><dd>${esc(j.size)} · not insured (trial)</dd>
+      <dt>Item</dt><dd>${j.item_type ? esc(itemTypeShort(j.item_type)) + " · " : ""}${esc(SIZE_SHORT[j.size] || j.size)} · not insured (trial)</dd>
+      ${j.check_first ? `<dt>Check first</dt><dd>${esc(CHECK_LABEL[j.check_status] || "not done yet")}${j.check_note ? ` · driver's note: "${esc(j.check_note)}"` : ""}</dd>` : ""}
       ${j.listing_url ? `<dt>Listing</dt><dd><a href="${esc(j.listing_url)}" target="_blank" rel="noopener">Open listing</a></dd>` : ""}
       ${j.description ? `<dt>Notes</dt><dd>${esc(j.description)}</dd>` : ""}
       ${t ? `<dt>Driver</dt><dd>${esc(t.driver_name)} · ${phoneLink(t.driver_phone)} · ${fmtDate(t.trip_date)} · <a href="${esc(mapWithJob(j, t))}" target="_blank" rel="noopener">route with job</a></dd>` : ""}
@@ -117,9 +120,10 @@ function jobCard(j) {
       ${j.status === "new" && j.payment === "unpaid" ? `<button class="btn small go" data-golive="${j.id}"${profileOf(j.user_id).id_status === "verified" ? "" : ` disabled title="Verify the sender's ID first"`}>Payment received: go live</button>${profileOf(j.user_id).id_status === "verified" ? "" : `<span class="fine">Verify the sender's ID first (ID checks).</span>`}${btnCopy("Copy payment reminder", T.payReminder(j))}` : ""}
       ${j.status === "open" ? btnCopy("Copy 'it's live' text", T.paidLive(j)) + btnCopy("Copy 'no driver yet' text", T.noDriver(j)) : ""}
       <label class="chip" style="display:inline-flex;gap:6px;align-items:center">Payment ${paySel}</label>
-      ${j.status === "delivered" && j.payment === "paid" ? `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-dpaid="${j.id}"${j.driver_paid ? " checked" : ""} style="width:auto"> Driver paid</label>` : ""}
+      ${DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) ? `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-dpaid="${j.id}"${j.driver_paid ? " checked" : ""} style="width:auto"> Driver paid</label>` : ""}
     </div>
-    ${["matched", "collected", "delivered", "no_show"].includes(j.status) ? `<div data-photos="${j.id}"></div>` : ""}
+    ${["matched", "collected", "delivered", "no_show", "declined"].includes(j.status) ? `<div data-photos="${j.id}"></div>` : ""}
+    ${j.status === "declined" ? `<p class="fine">Buyer said no after the check photos, so it wasn't collected. Refund the buyer their payment minus the driver's pay ($${driverFromPrice(j.price_estimate)}), then set payment to part_refunded. The driver's pay goes in the payout.</p>` : ""}
     ${j.status === "no_show" ? `<p class="fine">No-show: refund the sender their payment minus the driver's pay ($${driverFromPrice(j.price_estimate)}), then set payment to part_refunded. The driver's pay goes in the payout.</p>` : ""}
     <textarea class="tmpl" hidden aria-label="Text to copy"></textarea>
   </div>`;
@@ -145,7 +149,7 @@ const bizCard = b => `<div class="card"><span class="item">${esc(b.business_name
   <dt>Contact</dt><dd>${esc(b.contact_name)} · ${phoneLink(b.contact_phone)}${b.contact_email ? " · " + esc(b.contact_email) : ""}</dd>
   ${b.notes ? `<dt>Notes</dt><dd>${esc(b.notes)}</dd>` : ""}</dl></div>`;
 function payouts() {
-  const owed = data.jobs.filter(j => ["delivered", "no_show"].includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid && j.matched_trip);
+  const owed = data.jobs.filter(j => DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid && j.matched_trip);
   const by = {};
   owed.forEach(j => { const t = tripOf(j); if (!t) return; (by[t.driver_phone] ||= { name: t.driver_name, phone: t.driver_phone, jobs: [], total: 0 }); by[t.driver_phone].jobs.push(j); by[t.driver_phone].total += driverFromPrice(j.price_estimate); });
   const list = Object.values(by);
@@ -163,7 +167,7 @@ function render() {
   const drChecks = data.profiles.filter(p => p.driver_status === "pending");
   const live = J(["open", "matched", "collected"]);
   const upcoming = data.trips.filter(t => t.trip_date >= todayISO() && ["open", "new"].includes(t.status));
-  const owed = data.jobs.filter(j => ["delivered", "no_show"].includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid).length;
+  const owed = data.jobs.filter(j => DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid).length;
   const tabs = [["pay", "Payments to check", toPay.length], ["ids", "ID checks", idChecks.length], ["drivers", "Driver checks", drChecks.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0]];
   const body = {
     pay: toPay.map(jobCard).join("") || `<div class="empty">No payments to check.</div>`,
@@ -173,7 +177,7 @@ function render() {
     trips: upcoming.map(tripCard).join("") || `<div class="empty">No upcoming trips.</div>`,
     payouts: payouts(),
     biz: data.biz.map(bizCard).join("") || `<div class="empty">No businesses yet.</div>`,
-    past: J(["delivered", "cancelled", "no_show"]).map(jobCard).join("") || `<div class="empty">Nothing yet.</div>`,
+    past: J(["delivered", "cancelled", "no_show", "declined"]).map(jobCard).join("") || `<div class="empty">Nothing yet.</div>`,
   }[tab];
   const bankWarn = bankSet() ? "" : `<div class="err">Add your business bank account to config.js, so senders see where to pay.</div>`;
   $("#outBtn").hidden = false;

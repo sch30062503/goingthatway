@@ -45,15 +45,32 @@ const windowText = j => j.window_end && j.window_end !== j.job_date ? `${fmtDate
 const smsLink = (phone, body) => `sms:${String(phone || "").replace(/\s/g, "")}?&body=${encodeURIComponent(body)}`;
 const telLink = phone => `tel:${String(phone || "").replace(/\s/g, "")}`;
 
+const copyBtn = (text, label = "Copy") => `<button class="btn small" type="button" data-copy="${esc(text)}">${label}</button>`;
 function payPanel(j) {
   const amount = Math.round(j.price_estimate || 0), ref = jobRef(j);
+  const line = (k, val, copy) => `<div class="payline"><span class="k">${k}</span><span class="num v">${val}</span>${copyBtn(copy)}</div>`;
   return `<div class="card" style="border:2px solid var(--sign)"><h3>Pay $${amount} to make it live</h3>
-    ${bankSet() ? `<dl class="kv" style="display:grid;grid-template-columns:90px 1fr;gap:4px 10px;font-size:14px;margin:0">
-      <dt style="color:var(--ink3)">Amount</dt><dd class="num" style="margin:0">$${amount}</dd>
-      <dt style="color:var(--ink3)">Account</dt><dd class="num" style="margin:0">${esc(cfg.BANK_NAME || "Going That Way")} ${esc(cfg.BANK_ACCOUNT)}</dd>
-      <dt style="color:var(--ink3)">Reference</dt><dd class="num" style="margin:0"><b>${ref}</b></dd></dl>`
+    ${bankSet() ? `<div class="paylines">
+      ${line("Amount", `$${amount}`, String(amount))}
+      ${line("Account", `${esc(cfg.BANK_ACCOUNT)}<span class="fine" style="display:block">${esc(cfg.BANK_NAME || "Going That Way")}</span>`, cfg.BANK_ACCOUNT)}
+      ${line("Reference", `<b>${ref}</b>`, ref)}</div>
+      <p class="fine">Tap Copy, then paste into your banking app. Please use the reference exactly, so we can match your payment.</p>`
       : `<p class="sub">We'll text you the bank details with your reference <b class="num">${ref}</b>.</p>`}
     <p class="fine">Your job goes on the board as soon as we see the payment, usually within a few hours. We hold your money and only pay the driver once it's delivered. If no driver takes it by ${fmtDate(j.window_end || j.job_date)}, you get a full refund.</p></div>`;
+}
+
+// A message the buyer sends the seller, so they know a driver is coming
+function sellerMsg(j) {
+  const site = cfg.SITE_NAME || "goingthatway.co.nz";
+  return `Hi${j.seller_name ? " " + j.seller_name.split(" ")[0] : ""}, it's ${(j.sender_name || "").split(" ")[0] || "the buyer"}, the buyer of the ${j.item}. I've arranged for a Going That Way driver to collect it for me between ${fmtDate(j.job_date)} and ${fmtDate(j.window_end || j.job_date)}. They'll text you first to arrange a time${j.check_first ? ", and take a few photos for me before loading" : ""}. Could you help them load it? Thanks! (Ref ${jobRef(j)}, ${site})`;
+}
+function sellerPanel(j) {
+  if (j.kind !== "pickup") return "";
+  const msg = sellerMsg(j);
+  return `<div class="card"><h3>Let the seller know</h3>
+    <p class="sub">Send this to the seller through Trade Me, Marketplace or a text, so they're expecting the driver.</p>
+    <div class="quote">${esc(msg)}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${copyBtn(msg, "Copy message")}${j.seller_phone ? `<a class="btn small" href="${smsLink(j.seller_phone, msg)}">Text it to ${esc((j.seller_name || "the seller").split(" ")[0])}</a>` : ""}</div></div>`;
 }
 
 // =====================================================================
@@ -63,12 +80,14 @@ function send() {
   const pickup = sendMode === "pickup";
   const g = !db ? "" : !me.user ? gate("Create a free account to send", "It takes a minute. Everyone on Going That Way is ID-checked once, so drivers and senders know who they're dealing with.", "Sign up or sign in", "account")
     : !idOk() ? gate("Verify your ID first", "Upload a photo of your ID and a selfie. We check it once, then delete the photos. It takes about 2 minutes.", "Verify my ID", "account") : "";
-  if (g) return `<section><h2>${pickup ? "Bought something pick-up only in another town?" : "Send it with someone going that way"}</h2>${g}</section>`;
+  const head = pickup ? `<h2>Bought it online, but it's pick-up only?</h2><p class="sub">Furniture, whiteware, bikes, parts. Someone already driving that way collects it and brings it to your door. The seller doesn't pack or post a thing.</p>`
+    : `<h2>Send something with someone going that way</h2><p class="sub">Bulky, awkward or urgent things couriers won't take, carried by people already making the trip.</p>`;
+  if (g) return `<section>${head}${g}</section>`;
   return `<section>
-    <h2>${pickup ? "Bought something pick-up only in another town?" : "Send it with someone going that way"}</h2>
+    ${head}
     <div class="seg" role="tablist">
       <button type="button" role="tab" data-mode="pickup" aria-selected="${pickup}">Pick-up-only buy</button>
-      <button type="button" role="tab" data-mode="parcel" aria-selected="${!pickup}">Send a parcel</button>
+      <button type="button" role="tab" data-mode="parcel" aria-selected="${!pickup}">Send something</button>
     </div>
     ${notConnected()}
     <div class="card"><form id="jobForm" novalidate>
@@ -80,13 +99,15 @@ function send() {
         <div class="field full"><label for="j-pa">${pickup ? "Seller's address" : "Pickup address"}</label><input id="j-pa" required autocomplete="off" placeholder="Street and suburb. Only your driver sees it."></div>
         ${pickup ? `<div class="field"><label for="j-sn">Seller's name</label><input id="j-sn" required></div>
         <div class="field"><label for="j-sp">Seller's mobile</label><input id="j-sp" type="tel" inputmode="tel" required placeholder="So the driver can arrange pickup"></div>` : ""}
-        <div class="field full"><label for="j-da">Deliver to</label><input id="j-da" required autocomplete="street-address" placeholder="Street and suburb. Only your driver sees it."></div>
-        <div class="field"><label for="j-size">Size</label><select id="j-size">${Object.entries(SIZE_LABEL).map(([k, lab]) => `<option value="${k}"${k === (pickup ? "large" : "medium") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
+        <div class="field full"><label for="j-da">Deliver to</label><input id="j-da" required autocomplete="street-address" placeholder="Street and suburb. Only your driver sees it.">${me.profile?.address ? `<button class="linkbtn" type="button" id="useHome" style="align-self:flex-start;font-size:13px">Use my address: ${esc(me.profile.address)}</button>` : ""}</div>
+        <div class="field full"><label for="j-type">What kind of thing is it?</label><select id="j-type">${Object.entries(ITEM_TYPES).map(([k, [lab]]) => `<option value="${k}"${k === (pickup ? "furniture" : "parts") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
+        <div class="field"><label for="j-size">Space it needs</label><select id="j-size">${Object.entries(SIZE_LABEL).map(([k, lab]) => `<option value="${k}"${k === (pickup ? "large" : "medium") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="field"><label for="j-by">Deliver by</label><input id="j-by" type="date" min="${todayISO()}" value="${todayISO(6)}" required></div>
         <p class="fine" style="grid-column:1/-1">The more days you allow, the more drivers can take it. Today only is express (+25%).</p>
         <div class="field full"><label for="j-pm">How can the driver collect it?</label><select id="j-pm">${Object.entries(PICKUP_LABEL).map(([k, lab]) => `<option value="${k}">${lab}</option>`).join("")}</select></div>
         <div class="field full" id="pm-hours-f"><label for="j-ph" id="pm-hours-l">When is someone there?</label><input id="j-ph" placeholder="e.g. weekdays 8 am to 5 pm, or any time"></div>
         <div class="field full" id="pm-notes-f" hidden><label for="j-pn" id="pm-notes-l">Where is it left?</label><input id="j-pn" placeholder="e.g. under the carport. Only your driver sees this."></div>
+        ${pickup ? `<div class="field full checkfirst"><label class="check"><input type="checkbox" id="j-check"> <span><b>Check it before I commit</b> <span id="j-check-amt"></span><br>At the seller's, the driver sends you photos before loading it. You say yes and it's collected, or no and it's left there. If you say no, the driver is still paid for their trip and we refund the rest.</span></label></div>` : ""}
         ${postingAs()}
         ${me.profile?.id_status === "pending" ? `<div class="note" style="grid-column:1/-1">Your ID is being checked. You can post now; your job goes live once your ID is verified and it's paid.</div>` : ""}
       </div>
@@ -97,7 +118,7 @@ function send() {
         <div class="field full"><label for="j-desc">Anything the driver should know?</label><textarea id="j-desc" placeholder="e.g. Seller will help load. Keep upright."></textarea></div>
       </div></details>
       <div id="j-price"></div>
-      <label class="check"><input type="checkbox" id="c-ok" required> <span>It's worth less than $500 and isn't dangerous goods, cash, drugs, weapons or a live animal. I understand items aren't insured during the trial, and that if the driver arrives when I said and it isn't available, a no-show fee covering their trip is kept from my payment.</span></label>
+      <label class="check"><input type="checkbox" id="c-ok" required> <span>It's worth less than $500 and isn't dangerous goods, cash, drugs, weapons or a live animal. Someone at each end will help the driver load and unload anything heavy. I understand items aren't insured during the trial, and that if the driver arrives when I said and it isn't available, a no-show fee covering their trip is kept from my payment.</span></label>
       <div id="j-err"></div>
       <button class="btn go" type="submit">Post and pay</button>
     </form></div>
@@ -108,7 +129,7 @@ function jobValues() {
   const pm = v("j-pm") || "home";
   const jobDate = v("j-from-d") || todayISO(), windowEnd = v("j-by");
   return {
-    kind: sendMode, item: v("j-item"), listing_url: v("j-link") || null, from_town: v("j-from"), to_town: v("j-to"),
+    kind: sendMode, item: v("j-item"), item_type: v("j-type") || null, check_first: sendMode === "pickup" && !!$("#j-check")?.checked, listing_url: v("j-link") || null, from_town: v("j-from"), to_town: v("j-to"),
     pickup_address: v("j-pa") || null, drop_address: v("j-da") || null, seller_name: v("j-sn") || null, seller_phone: v("j-sp") || null,
     size: v("j-size"), job_date: jobDate, window_end: windowEnd,
     deadline_time: v("j-dl") === "by" ? (v("j-dlt") || null) : null,
@@ -119,7 +140,7 @@ function jobValues() {
 }
 function jobPrice(j) {
   const express = isExpress(j.job_date, j.window_end);
-  return estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (express ? "express" : null), cover: 500 });
+  return estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (express ? "express" : null), cover: 500, check: j.check_first });
 }
 function updPickupMode() {
   const pm = v("j-pm"); if (!pm) return;
@@ -133,8 +154,17 @@ function updPrice() {
   const j = jobValues(), e = jobPrice(j);
   if (!e) { box.innerHTML = `<p class="fine">Pick two different towns to see a price.</p>`; return; }
   const express = isExpress(j.job_date, j.window_end);
+  const amt = $("#j-check-amt"); if (amt) { const off = jobPrice({ ...j, check_first: false }), on = jobPrice({ ...j, check_first: true }); amt.textContent = off && on ? `(+$${on.total - off.total})` : ""; }
+  const P = e.parts, r = x => "$" + Math.round(x);
   box.innerHTML = `<div class="allin"><span>Price, all in</span><b class="num">$${e.total}</b></div>
     <p class="fine" style="margin-top:6px">${e.onRoute} km${j.handover === "route" ? ", meeting on the route" : ", door to door"}. You pay when you post, and we hold it until it's delivered. Full refund if no driver takes it by ${fmtDate(j.window_end)}.</p>
+    <details class="why"><summary>How this price is worked out</summary><div class="rates" style="margin-top:6px">
+      <div><span class="num">${r(P.route)}</span><span>${e.onRoute} km along the driver's route</span></div>
+      ${P.detour ? `<div><span class="num">${r(P.detour)}</span><span>the detour to both doors, and the driver's time</span></div>` : ""}
+      ${P.handling ? `<div><span class="num">${r(P.handling)}</span><span>loading, strapping down and unloading a bulky item</span></div>` : ""}
+      ${P.check ? `<div><span class="num">${r(P.check)}</span><span>checking it for you before collecting</span></div>` : ""}
+      ${P.prem ? `<div><span class="num">${r(P.prem)}</span><span>${express ? "same-day express" : "set arrival time"}</span></div>` : ""}
+      <div><span class="num">${r(P.fee)}</span><span>Going That Way's 15%. Everything else goes to the driver.</span></div></div></details>
     ${e.prem ? `<div class="note" style="margin-top:6px">Includes a $${e.prem} ${express ? "same-day express" : "set-time"} premium, paid to the driver. Delays like road closures, crashes or weather can still happen. If it arrives late, you only pay the normal rate ($${e.normal}).</div>` : ""}
     <div class="note" style="margin-top:6px"><b>Trial service: items aren't insured yet.</b> Please don't send anything worth more than $500.</div>`;
 }
@@ -150,16 +180,17 @@ function drive() {
     <h2>Heading between Christchurch and Timaru today?</h2>
     <p class="sub">Post your trip and see paid jobs on your route straight away. Take the ones that suit you.</p>
     ${notConnected()}
+    <div id="t-again"></div>
     <div class="card"><form id="tripForm" novalidate>
       <div class="fields">
-        <div class="field"><label for="t-from">From</label><select id="t-from">${townOptions("Christchurch")}</select></div>
-        <div class="field"><label for="t-to">To</label><select id="t-to">${townOptions("Timaru")}</select></div>
+        <div class="field"><label for="t-from">From</label><select id="t-from">${townOptions(memo.get().tfrom || "Christchurch")}</select></div>
+        <div class="field"><label for="t-to">To</label><select id="t-to">${townOptions(memo.get().tto || "Timaru")}</select></div>
         <div class="field full"><label for="t-fa">Leaving from</label><input id="t-fa" required placeholder="Street, suburb, or e.g. Christchurch CBD" value="${esc(memo.get().tfa || "")}"></div>
         <div class="field full"><label for="t-ta">Arriving at</label><input id="t-ta" required placeholder="Street, suburb, or e.g. Timaru CBD" value="${esc(memo.get().tta || "")}"></div>
         <div class="field"><label for="t-date">Day</label><input id="t-date" type="date" min="${todayISO()}" value="${todayISO()}" required></div>
         <div class="field"><label for="t-time">Leaving about</label><input id="t-time" type="time" value="08:00"></div>
         <div class="field"><label for="t-space">Space</label><select id="t-space">${Object.entries(SPACE_LABEL).map(([k, lab]) => `<option value="${k}"${k === (memo.get().tspace || me.profile?.vehicle_space || "ute") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
-        <div class="field"><label for="t-det">Max detour</label><select id="t-det"><option value="5">5 km</option><option value="10">10 km</option><option value="20" selected>20 km</option><option value="30">30 km</option></select></div>
+        <div class="field"><label for="t-det">Max detour</label><select id="t-det">${[5, 10, 20, 30].map(k => `<option value="${k}"${k === (+memo.get().tdet || 20) ? " selected" : ""}>${k} km</option>`).join("")}</select></div>
         ${postingAs()}
         ${me.profile?.driver_status === "pending" ? `<div class="note" style="grid-column:1/-1">We're checking your licence and vehicle. You can post trips now; they go live once you're approved.</div>` : ""}
       </div>
@@ -175,18 +206,45 @@ function drive() {
   </section>`;
 }
 
+// "Going today?" One tap reposts the driver's last trip for today
+const nextQuarter = () => { const d = new Date(Date.now() + 15 * 60000); d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0); return d.toTimeString().slice(0, 5); };
+let againTrip = null;
+async function loadAgain() {
+  const box = $("#t-again"); if (!box || !db || !me.user) return;
+  const { data } = await db.from("trips").select("*").eq("user_id", me.user.id).order("created_at", { ascending: false }).limit(1);
+  const t = data?.[0]; againTrip = t || null; if (!t || !$("#t-again")) return;
+  const already = t.trip_date === todayISO() && ["new", "open"].includes(t.status);
+  box.innerHTML = already ? `<div class="card again"><div class="row"><h3>You're going today</h3><span class="chip g">Posted</span></div>${plate(t.from_town, t.to_town)}<button class="btn" type="button" data-showtrip="${t.id}">See jobs on my route</button></div>`
+    : `<div class="card again"><h3>Going again today?</h3>${plate(t.from_town, t.to_town)}
+      <p class="fine">${esc(t.from_suburb || t.from_town)} to ${esc(t.to_suburb || t.to_town)} · ${esc(SPACE_LABEL[t.space] || "")} · up to ${t.max_detour_km} km detour</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn go" type="button" data-again="now">Post it for today, leaving now</button><button class="btn" type="button" data-again="edit">Change details</button></div><div id="again-err"></div></div>`;
+}
+async function postAgain(mode) {
+  const t = againTrip; if (!t) return;
+  if (mode === "edit") {
+    $("#t-from").value = t.from_town; $("#t-to").value = t.to_town; $("#t-fa").value = t.from_suburb || ""; $("#t-ta").value = t.to_suburb || "";
+    $("#t-space").value = t.space; $("#t-det").value = String(t.max_detour_km); $("#t-time").value = nextQuarter(); if (t.vehicle) $("#t-veh").value = t.vehicle;
+    $("#t-again").innerHTML = ""; $("#tripForm").scrollIntoView({ behavior: "smooth" }); return;
+  }
+  const row = { from_town: t.from_town, to_town: t.to_town, from_suburb: t.from_suburb, to_suburb: t.to_suburb, trip_date: todayISO(), depart_time: nextQuarter(),
+    space: t.space, max_detour_km: t.max_detour_km, vehicle: t.vehicle, space_note: t.space_note, regular: t.regular, driver_name: me.profile?.name || t.driver_name, driver_phone: me.profile?.phone || t.driver_phone };
+  const btn = document.querySelector('[data-again="now"]');
+  const saved = await save("trips", row, "#again-err", btn);
+  if (saved) { $("#t-again").innerHTML = ""; $("#tripForm").closest(".card").hidden = true; await refreshTripPanel(saved.id); }
+}
+
 // Jobs on a trip's route: taken jobs (full details) and available ones (take it)
 async function tripJobsPanel(t, verified) {
   const [taken, board] = await Promise.all([
     db.from("jobs").select("*").eq("matched_trip", t.id),
     db.from("board_jobs").select("*").eq("status", "open"),
   ]);
-  const mine = (taken.data || []).filter(j => ["matched", "collected", "delivered"].includes(j.status));
+  const mine = (taken.data || []).filter(j => ["matched", "collected", "delivered", "declined"].includes(j.status));
   const avail = (board.data || []).filter(j => jobFitsTrip(j, t));
   const takenHtml = mine.map(j => takenJobCard(j, t)).join("");
   const availHtml = avail.map(j => `<div class="card">
       <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span></div><span class="chip g num">You get $${driverFromPrice(j.price_estimate)}</span></div>
-      <div class="meta"><span>${esc(j.from_town)} → ${esc(j.to_town)}</span><span class="chip">${esc(SIZE_LABEL[j.size]?.split(" (")[0])}</span><span class="chip">${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? ": " + esc(j.pickup_hours) : ""}</span><span>by ${fmtDate(j.window_end)}${j.deadline_time ? ", " + fmtTime(j.deadline_time) : ""}</span></div>
+      <div class="meta"><span>${esc(j.from_town)} → ${esc(j.to_town)}</span>${j.item_type ? `<span class="chip">${esc(itemTypeShort(j.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[j.size] || j.size)}</span>${j.check_first ? `<span class="chip y">Check first: photos for the buyer</span>` : ""}<span class="chip">${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? ": " + esc(j.pickup_hours) : ""}</span><span>by ${fmtDate(j.window_end)}${j.deadline_time ? ", " + fmtTime(j.deadline_time) : ""}</span></div>
       ${t.status === "open" && verified ? `<button class="btn go" data-claim="${j.id}:${t.id}">Take it</button>` : ""}
     </div>`).join("");
   return `${takenHtml ? `<div class="label">Jobs you've taken</div>${takenHtml}` : ""}
@@ -196,11 +254,29 @@ async function tripJobsPanel(t, verified) {
 }
 function takenJobCard(j, t) {
   const who = j.kind === "pickup" && j.seller_phone ? { name: j.seller_name || "the seller", phone: j.seller_phone } : { name: j.sender_name, phone: j.sender_phone };
-  const confirmMsg = `Hi ${who.name}, it's ${t.driver_name} from Going That Way. I'm collecting the ${j.item} ${t.trip_date === todayISO() ? "today" : "on " + fmtDate(t.trip_date)}, around ${fmtTime(t.depart_time) || "(time)"}. Can you confirm it'll be ready? Thanks!`;
-  const step = j.status === "matched" ? `<div style="display:flex;gap:6px;flex-wrap:wrap"><label class="btn go camera">Collected: take pickup photo<input type="file" accept="image/*" capture="environment" data-photo="${j.id}:pickup"></label><button class="btn small" data-release="${j.id}">Give it back</button><label class="btn small camera">Nobody there? Photo the door<input type="file" accept="image/*" capture="environment" data-photo="${j.id}:no_show"></label></div>`
-    : j.status === "collected" ? `<label class="btn go camera">Delivered: take drop-off photo<input type="file" accept="image/*" capture="environment" data-photo="${j.id}:dropoff"></label>` : `<span class="chip g">Delivered. Thanks! Paid in the weekly payout.</span>`;
+  const confirmMsg = `Hi ${who.name}, it's ${t.driver_name} from Going That Way. I'm collecting the ${j.item} ${t.trip_date === todayISO() ? "today" : "on " + fmtDate(t.trip_date)}, around ${fmtTime(t.depart_time) || "(time)"}.${j.check_first ? " I'll take a few photos of it for the buyer before loading." : ""} Can you confirm it'll be ready? Thanks!`;
+  const buyer = (j.sender_name || "the buyer").split(" ")[0];
+  const askMsg = `Hi ${buyer}, it's ${t.driver_name} from Going That Way. I'm at the seller's with your ${j.item}. I've sent you photos: open Going That Way, then My account, and tap yes or no. I'll wait a few minutes.`;
+  const camera = (kind, label, cls = "btn go") => `<label class="${cls} camera">${label}<input type="file" accept="image/*" capture="environment" data-photo="${j.id}:${kind}"></label>`;
+  const noShow = camera("no_show", "Nobody there? Photo the door", "btn small");
+  let step;
+  if (j.status === "matched" && j.check_first && j.check_status !== "approved") {
+    step = j.check_status === "waiting"
+      ? `<div class="note" data-poll><b>Waiting for ${esc(buyer)} to say yes or no.</b> Don't load it yet.${j.check_note ? ` Your note: "${esc(j.check_note)}"` : ""}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small go" href="${smsLink(j.sender_phone, askMsg)}">Text ${esc(buyer)} to look</a><button class="btn small" type="button" data-recheck="${t.id}">Check for an answer</button>${camera("check", "Add another photo", "btn small")}</div>`
+      : `<div class="checkstep"><b>1. Check it for the buyer before loading.</b> Take a few photos (the whole item, any marks or damage, and that it works if you can), then send them.
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${camera("check", "Take a check photo")}</div>
+        <div class="field" style="margin-top:6px"><label for="cn-${j.id}">Anything the buyer should know?</label><input id="cn-${j.id}" placeholder="e.g. Small scratch on the left arm, otherwise as listed"></div>
+        <button class="btn go" type="button" data-checksend="${j.id}" style="margin-top:6px">Send photos to ${esc(buyer)}</button></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${j.check_status ? "" : `<button class="btn small" data-release="${j.id}">Give it back</button>`}${noShow}</div>`;
+  } else if (j.status === "matched") {
+    step = `${j.check_first ? `<div class="note"><b>${esc(buyer)} said yes.</b> Load it up.</div>` : ""}<div style="display:flex;gap:6px;flex-wrap:wrap">${camera("pickup", "Collected: take pickup photo")}${j.check_first ? "" : `<button class="btn small" data-release="${j.id}">Give it back</button>`}${noShow}</div>`;
+  } else if (j.status === "collected") step = camera("dropoff", "Delivered: take drop-off photo");
+  else if (j.status === "declined") step = `<div class="note"><b>${esc(buyer)} said no, so leave it with the seller.</b> Let the seller know politely. You're still paid for this trip in the weekly payout.</div>`;
+  else step = `<span class="chip g">Delivered. Thanks! Paid in the weekly payout.</span>`;
   return `<div class="card" style="border:2px solid var(--mark)">
     <div class="row"><span class="item">${esc(j.item)}</span><span class="chip g num">You get $${driverFromPrice(j.price_estimate)}</span></div>
+    ${j.item_type || j.check_first ? `<div class="meta">${j.item_type ? `<span class="chip">${esc(itemTypeShort(j.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[j.size] || "")}</span>${j.check_first ? `<span class="chip y">Check first</span>` : ""}</div>` : ""}
     <dl style="display:grid;grid-template-columns:92px 1fr;gap:3px 10px;font-size:13.5px;margin:0">
       <dt style="color:var(--ink3)">Collect</dt><dd style="margin:0">${esc(j.pickup_address)}, ${esc(j.from_town)}</dd>
       <dt style="color:var(--ink3)">How</dt><dd style="margin:0">${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? " · " + esc(j.pickup_hours) : ""}${j.pickup_notes ? " · " + esc(j.pickup_notes) : ""}</dd>
@@ -210,7 +286,7 @@ function takenJobCard(j, t) {
       <dt style="color:var(--ink3)">Job ref</dt><dd class="num" style="margin:0">${jobRef(j)}</dd>
     </dl>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-      ${j.status === "matched" ? `<a class="btn small go" href="${smsLink(who.phone, confirmMsg)}">Text ${esc(who.name.split(" ")[0])} to confirm pickup</a>` : ""}
+      ${j.status === "matched" && !j.check_status ? `<a class="btn small go" href="${smsLink(who.phone, confirmMsg)}">Text ${esc(who.name.split(" ")[0])} to confirm pickup</a>` : ""}
       <a class="btn small" href="${mapWithJob(j, t)}" target="_blank" rel="noopener">Route with this job</a>
     </div>
     <p class="fine">Don't set off for the pickup until they've confirmed, unless it's left out. The photos confirm collection and delivery, and protect you if anything's questioned.</p>
@@ -259,7 +335,7 @@ async function loadBoard() {
   const bj = $("#bj"), bt = $("#bt"); if (!bj) return;
   if (j.error || t.error) { bj.textContent = bt.textContent = "Couldn't load the board. Try again shortly."; return; }
   bj.className = bt.className = "";
-  bj.innerHTML = j.data.length ? j.data.map(r => `<div class="card" style="margin-bottom:8px"><div class="row"><div>${r.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(r.item)}</span></div><span class="chip g num">$${Math.round(r.price_estimate || 0)}</span></div>${plate(r.from_town, r.to_town)}<div class="meta"><span>by ${fmtDate(r.window_end)}</span><span class="chip">${esc(SIZE_LABEL[r.size]?.split(" (")[0] || r.size)}</span><span class="chip">${esc(PICKUP_LABEL[r.pickup_mode] || "")}</span>${r.status !== "open" ? `<span class="chip y">Driver found</span>` : ""}</div></div>`).join("")
+  bj.innerHTML = j.data.length ? j.data.map(r => `<div class="card" style="margin-bottom:8px"><div class="row"><div>${r.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(r.item)}</span></div><span class="chip g num">$${Math.round(r.price_estimate || 0)}</span></div>${plate(r.from_town, r.to_town)}<div class="meta"><span>by ${fmtDate(r.window_end)}</span>${r.item_type ? `<span class="chip">${esc(itemTypeShort(r.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[r.size] || r.size)}</span><span class="chip">${esc(PICKUP_LABEL[r.pickup_mode] || "")}</span>${r.status !== "open" ? `<span class="chip y">Driver found</span>` : ""}</div></div>`).join("")
     : `<div class="empty">No paid jobs right now. Be the first: post a job.</div>`;
   bt.innerHTML = t.data.length ? t.data.map(r => `<div class="card" style="margin-bottom:8px">${plate(r.from_town, r.to_town)}<div class="meta"><span>${fmtDate(r.trip_date)}${r.depart_time ? ", leaving " + fmtTime(r.depart_time) : ""}</span><span class="chip">${esc(SPACE_LABEL[r.space] || r.space)}</span></div></div>`).join("")
     : `<div class="empty">No trips posted yet. Driving this week? Post your trip.</div>`;
@@ -294,6 +370,7 @@ function account() {
   setTimeout(loadMine, 0);
   return `<section>
     <div class="row"><h2>My account</h2><button class="btn small" id="signOut" type="button">Sign out</button></div>
+    <div id="checkAlert"></div>
 
     <div class="card"><div class="row"><h3>1. Your ID check</h3>${chip(P.id_status)}</div>
       ${P.id_status === "verified" ? `<p class="sub">Verified. Your photos have been deleted. You can send anything on the site.</p>`
@@ -337,7 +414,26 @@ async function uploadIdDoc(kind, file) {
   const { error } = await db.storage.from("id-docs").upload(path, blob, { contentType: "image/jpeg", upsert: false });
   if (error) throw error;
 }
-const JOB_STATUS = { new: ["Waiting for payment", "y"], open: ["Paid · waiting for a driver", "g"], matched: ["Driver on the way", "g"], collected: ["Collected · on its way", "g"], delivered: ["Delivered", "g"], cancelled: ["Cancelled", ""], no_show: ["No-show", ""] };
+const JOB_STATUS = { new: ["Waiting for payment", "y"], open: ["Paid · waiting for a driver", "g"], matched: ["Driver on the way", "g"], collected: ["Collected · on its way", "g"], delivered: ["Delivered", "g"], cancelled: ["Cancelled", ""], no_show: ["No-show", ""], declined: ["Not collected: you said no", ""] };
+// Progress bar: posted → paid → driver found → (checked) → collected → delivered
+function progress(j) {
+  if (!["new", "open", "matched", "collected", "delivered"].includes(j.status)) return "";
+  const steps = [["Paid", j.status !== "new"], ["Driver found", ["matched", "collected", "delivered"].includes(j.status)]];
+  if (j.check_first) steps.push(["Checked", j.check_status === "approved" || ["collected", "delivered"].includes(j.status)]);
+  steps.push(["Collected", ["collected", "delivered"].includes(j.status)], ["Delivered", j.status === "delivered"]);
+  const next = steps.findIndex(([, d]) => !d);
+  return `<ol class="progress" aria-label="Progress">${steps.map(([l, d], i) => `<li class="${d ? "done" : i === next ? "now" : ""}">${l}</li>`).join("")}</ol>`;
+}
+// The buyer's yes/no on the driver's check photos
+function checkPanel(r) {
+  if (!r.check_first || r.status !== "matched") return "";
+  if (r.check_status === "waiting") return `<div class="card checkask"><h3>Your driver is at the seller's. Is it what you expected?</h3>
+    ${r.check_note ? `<p class="sub">Driver's note: "${esc(r.check_note)}"</p>` : ""}
+    <p class="fine">Tap a photo to see it bigger. Say yes and they'll load it up. Say no and it stays with the seller; the driver is still paid for the trip and we refund the rest.</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn go" type="button" data-checkans="${r.id}:yes">Yes, collect it</button><button class="btn" type="button" data-checkans="${r.id}:no">No, leave it</button></div></div>`;
+  if (r.check_status === "approved") return `<p class="fine">You said yes to the check photos.</p>`;
+  return `<p class="fine">Your driver will send you photos from the seller's before loading it. Keep your phone handy on the day.</p>`;
+}
 const TRIP_STATUS = { new: ["Waiting for licence check", "y"], open: ["Live", "g"], full: ["Full", ""], done: ["Done", "g"], cancelled: ["Cancelled", ""] };
 async function loadMine() {
   const box = $("#mine");
@@ -358,23 +454,31 @@ async function loadMine() {
       <div class="meta"><span>${fmtDate(r.trip_date)}${r.depart_time ? ", leaving " + fmtTime(r.depart_time) : ""}</span>${live ? `<button class="btn small" data-cancel="trips:${r.id}" style="margin-left:auto">Cancel trip</button>` : ""}</div>
       ${live ? `<div data-trippanel="${r.id}" class="empty">Loading jobs on your route…</div>` : ""}</div>`);
   }
-  for (const r of (j.data || [])) {
+  const jobsSorted = [...(j.data || [])].sort((a, b) => (b.check_status === "waiting" && b.status === "matched") - (a.check_status === "waiting" && a.status === "matched"));
+  for (const r of jobsSorted) {
     const [s, c] = JOB_STATUS[r.status] || [r.status, ""];
     const canCancel = ["new", "open"].includes(r.status);
-    parts.push(`<div class="card" style="margin-bottom:8px"><div class="row"><span class="item">${esc(r.item)}</span><span class="chip ${c}">${s}</span></div>${plate(r.from_town, r.to_town)}
+    const pollMe = r.check_first && r.status === "matched" && !r.check_status ? " data-poll" : "";
+    parts.push(`<div class="card" id="job-${r.id}"${pollMe} style="margin-bottom:8px"><div class="row"><span class="item">${esc(r.item)}</span><span class="chip ${c}">${s}</span></div>${plate(r.from_town, r.to_town)}
       <div class="meta"><span>by ${fmtDate(r.window_end || r.job_date)}</span><span class="num">$${Math.round(r.price_estimate || 0)} · ${jobRef(r)}</span>${canCancel ? `<button class="btn small" data-cancel="jobs:${r.id}" style="margin-left:auto">Cancel</button>` : ""}</div>
-      ${["matched", "collected", "delivered"].includes(r.status) ? `<div data-driverfor="${r.id}" class="fine">Finding driver details…</div><div data-photos="${r.id}"></div>` : ""}
-      ${r.status === "new" && r.payment === "unpaid" ? payPanel(r) : ""}</div>`);
+      ${progress(r)}
+      ${["matched", "collected", "delivered", "declined"].includes(r.status) ? `<div data-driverfor="${r.id}" class="fine">Finding driver details…</div><div data-photos="${r.id}"></div>` : ""}
+      ${checkPanel(r)}
+      ${r.status === "declined" ? `<p class="fine">It wasn't collected. We'll refund you everything except the driver's trip, usually within 2 working days.</p>` : ""}
+      ${r.status === "new" && r.payment === "unpaid" ? payPanel(r) : ""}
+      ${["new", "open"].includes(r.status) && r.kind === "pickup" ? `<details class="more"><summary>Message for the seller</summary>${sellerPanel(r)}</details>` : ""}</div>`);
   }
   box.className = "";
-  box.innerHTML = parts.join("") || `<div class="empty">You haven't posted anything from this device yet.</div>`;
+  box.innerHTML = parts.join("") || `<div class="empty">You haven't posted anything yet.</div>`;
+  const waiting = (j.data || []).filter(r => r.check_status === "waiting" && r.status === "matched");
+  const al = $("#checkAlert"); if (al) al.innerHTML = waiting.map(r => `<a class="alert" href="#job-${r.id}"><b>Your driver has sent photos of the ${esc(r.item)}.</b> Tap to see them and say yes or no.</a>`).join("");
   for (const r of (t.data || [])) { const el = document.querySelector(`[data-trippanel="${r.id}"]`); if (el) { el.className = ""; el.innerHTML = await tripJobsPanel(r, verified); } }
   showPhotos(db);
   for (const r of (j.data || [])) {
     const el = document.querySelector(`[data-driverfor="${r.id}"]`); if (!el) continue;
     const { data } = await db.rpc("my_job_driver", { p_job: r.id });
     const d = data?.[0];
-    el.innerHTML = d ? `Driver: <b>${esc(d.driver_name)}</b> · <a href="${telLink(d.driver_phone)}">${esc(d.driver_phone)}</a> · ${fmtDate(d.trip_date)}${d.depart_time ? ", leaving " + fmtTime(d.depart_time) : ""}. They'll text you before pickup.` : "";
+    el.innerHTML = d ? `Driver: <b>${esc(d.driver_name)}</b> · <a href="${telLink(d.driver_phone)}">${esc(d.driver_phone)}</a> · ${fmtDate(d.trip_date)}${d.depart_time ? ", leaving " + fmtTime(d.depart_time) : ""}.${r.status === "matched" ? " They'll text before pickup." : ""}` : "";
   }
 }
 
@@ -384,17 +488,20 @@ async function loadMine() {
 function info() {
   const sec = (t, b) => `<div class="card"><h3>${t}</h3>${b}</div>`;
   return `<section><h2>How it works</h2>
-    ${sec("For senders", `<ol class="steps"><li><b>Post it and pay.</b> Choose a deliver-by day and how it can be collected. We hold your money.</li><li><b>It goes on the board</b> for drivers heading that way.</li><li><b>A driver takes it</b> and texts you to confirm pickup.</li><li><b>It's delivered.</b> Photos at pickup and drop-off, then the driver is paid. Full refund if nobody takes it in time.</li></ol>`)}
+    ${sec("Bought something pick-up only?", `<ol class="steps"><li><b>Post it and pay.</b> Paste the listing, add the seller's details and a deliver-by day. We hold your money.</li><li><b>Let the seller know.</b> We give you a message to send them. They don't pack or post anything.</li><li><b>A driver already heading your way takes it</b> and texts the seller to arrange pickup.</li><li><b>Want it checked first?</b> The driver sends you photos from the seller's, and you say yes or no before it's loaded.</li><li><b>It's delivered to your door.</b> Photos at pickup and drop-off, then the driver is paid. Full refund if nobody takes it in time.</li></ol>`)}
     ${sec("For drivers", `<ol class="steps"><li><b>Heading somewhere today?</b> Post your trip.</li><li><b>See paid jobs on your route</b> and what each one pays you.</li><li><b>Take the ones that suit you,</b> text the sender to confirm, collect and deliver.</li><li><b>Get paid weekly</b> by bank transfer.</li></ol>`)}
     ${sec("Pricing", `<p class="sub">One all-in price, shown before you post. Our cut is 15% (minimum $3), and the driver always gets the rest.</p><div class="rates">
-      <div><span class="num">5–15c/km</span><span>along the route, depending on size.</span></div>
+      <div><span class="num">5–20c/km</span><span>along the route, depending on the space it needs.</span></div>
+      <div><span class="num">$10</span><span>for loading and unloading a bulky item.</span></div>
+      <div><span class="num">$10</span><span>to the driver if you ask them to check it before collecting.</span></div>
       <div><span class="num">80c/km</span><span>for the detour to the door and back.</span></div>
       <div><span class="num">$23.95/h</span><span>for the driver's extra time, at the NZ minimum wage.</span></div>
       <div><span class="num">+25%</span><span>on km for same-day express or a set arrival time. If it's late, you pay the normal rate.</span></div>
       <div><span class="num">$0</span><span>detour if you meet the driver on the route.</span></div></div>`)}
     ${sec("Collection and no-shows", `<p class="sub">Say how it can be collected: someone's home (and when), left out, at a business, or meet on the route. Drivers text you before they set off. If they arrive when you said and it isn't available, a no-show fee covering their trip is kept from your payment, and the rest refunded.</p>`)}
     ${sec("For businesses", `<p class="sub">Post jobs first thing. If no driver takes it by your cut-off, we text you to book your usual courier. <button class="linkbtn" data-tab-link="business" type="button">Register interest</button></p>`)}
-    ${sec("Trial service", `<ul class="plainlist"><li>Items aren't insured yet, so please only send things worth less than $500</li><li>Everyone is ID-checked once with a photo ID and selfie; the photos are deleted once checked</li><li>Drivers' licences, WoF and rego are checked before their first job</li><li>Drivers can check an item before accepting it, and refuse anything sealed or suspicious</li><li>Addresses are only shared with your driver</li><li>Your payment is held until delivery is confirmed</li></ul>`)}
+    ${sec("Put it on your home screen", `<p class="sub">Open it like an app, in one tap.</p><ul class="plainlist"><li><b>iPhone:</b> in Safari, tap the Share button, then <b>Add to Home Screen</b>.</li><li><b>Android:</b> in Chrome, tap the ⋮ menu, then <b>Add to Home screen</b> or <b>Install app</b>.</li></ul>`)}
+    ${sec("Trial service", `<ul class="plainlist"><li>Items aren't insured yet, so please only send things worth less than $500</li><li>Everyone is ID-checked once with a photo ID and selfie; the photos are deleted once checked</li><li>Drivers' licences, WoF and rego are checked before their first job</li><li>Drivers can check an item before accepting it, and refuse anything sealed or suspicious</li><li>Someone at each end helps the driver load and unload anything heavy</li><li>Addresses are only shared with your driver</li><li>Your payment is held until delivery is confirmed</li></ul>`)}
   </section>`;
 }
 
@@ -406,6 +513,7 @@ function render() {
   $("#view").innerHTML = views[cur]();
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === cur));
   updPickupMode(); updPrice();
+  if (cur === "drive") loadAgain();
 }
 function go(tab) { cur = tab; render(); window.scrollTo(0, 0); }
 function showErr(box, msg) { $(box).innerHTML = msg ? `<div class="err">${msg}</div>` : ""; }
@@ -417,7 +525,7 @@ function checkContact(errBox) {
   memo.set({ name, phone });
   return true;
 }
-const niceError = e => { const m = e?.message || ""; return /someone else|outside|licence|isn't live|yours to update|give back/i.test(m) ? esc(m) : "That didn't go through. Check your connection and try again." + (m ? ` <span style="display:block;font-size:12px;opacity:.8;margin-top:4px">Details: ${esc(m)}</span>` : ""); };
+const niceError = e => { const m = e?.message || ""; return e?.code === "P0001" || /someone else|outside|licence|isn't live|yours to update|give back|buyer|already been answered|photo/i.test(m) ? esc(m) : "That didn't go through. Check your connection and try again." + (m ? ` <span style="display:block;font-size:12px;opacity:.8;margin-top:4px">Details: ${esc(m)}</span>` : ""); };
 async function save(table, row, errBox, btn) {
   if (!db) return showErr(errBox, "The site isn't connected yet, so this can't be saved."), null;
   btn.disabled = true; const label = btn.textContent; btn.textContent = "Sending…";
@@ -442,6 +550,27 @@ document.addEventListener("click", async e => {
     const [t, id] = cx.dataset.cancel.split(":"); cx.disabled = true;
     const { error } = await db.from(t).update({ status: "cancelled" }).eq("id", id);
     if (error) { cx.textContent = "Couldn't cancel. Text us instead."; return; }
+    return loadMine();
+  }
+  const cp = e.target.closest("[data-copy]"); if (cp) return copyText(cp.dataset.copy, cp);
+  if (e.target.closest("#useHome")) { $("#j-da").value = me.profile?.address || ""; return; }
+  const ag = e.target.closest("[data-again]"); if (ag) return postAgain(ag.dataset.again);
+  const sw = e.target.closest("[data-showtrip]"); if (sw) { $("#tripForm").closest(".card").hidden = true; $("#t-again").innerHTML = ""; return refreshTripPanel(sw.dataset.showtrip); }
+  const rc = e.target.closest("[data-recheck]"); if (rc) { rc.textContent = "Checking…"; return cur === "account" ? loadMine() : refreshTripPanel(rc.dataset.recheck); }
+  const cs = e.target.closest("[data-checksend]");
+  if (cs) {
+    const id = cs.dataset.checksend; cs.disabled = true; cs.textContent = "Sending…";
+    const { error } = await db.rpc("job_check_send", { p_job: id, p_note: $("#cn-" + id)?.value || null });
+    if (error) { cs.disabled = false; cs.textContent = "Send photos to the buyer"; cs.insertAdjacentHTML("afterend", `<div class="err">${niceError(error)}</div>`); return; }
+    return cur === "account" ? loadMine() : refreshTripPanel(lastTrip?.id);
+  }
+  const ca = e.target.closest("[data-checkans]");
+  if (ca) {
+    const [id, ans] = ca.dataset.checkans.split(":");
+    if (ca.dataset.confirm !== "1") { ca.dataset.confirm = "1"; ca.textContent = ans === "yes" ? "Tap again: yes, collect it" : "Tap again: no, leave it"; return; }
+    ca.disabled = true;
+    const { error } = await db.rpc("job_check_answer", { p_job: id, p_ok: ans === "yes" });
+    if (error) { ca.outerHTML = `<div class="err">${niceError(error)}</div>`; return; }
     return loadMine();
   }
   const cl = e.target.closest("[data-claim]");
@@ -485,6 +614,11 @@ document.addEventListener("change", async e => {
   btn.firstChild.textContent = "Uploading photo…"; inp.disabled = true;
   try {
     await uploadJobPhoto(db, job, kind, inp.files[0]);
+    if (kind === "check") {
+      btn.firstChild.textContent = "Photo added. Take another?"; inp.disabled = false; inp.value = "";
+      btn.closest(".card")?.querySelectorAll(".err").forEach(x => x.remove());
+      return showPhotos(db);
+    }
     if (kind === "pickup" || kind === "dropoff") {
       const { error } = await db.rpc("job_progress", { p_job: job, p_step: kind === "pickup" ? "collected" : "delivered" });
       if (error) throw error;
@@ -495,7 +629,15 @@ document.addEventListener("change", async e => {
     return cur === "mine" ? loadMine() : refreshTripPanel(lastTrip?.id);
   } catch (err) { console.error(err); btn.firstChild.textContent = label; inp.disabled = false; inp.value = ""; btn.insertAdjacentHTML("afterend", `<div class="err">Photo didn't upload. Check your signal and try again. <span style="display:block;font-size:12px;opacity:.8">Details: ${esc(err.message || err)}</span></div>`); }
 });
-document.addEventListener("change", e => { if (e.target.closest("#jobForm")) { updPickupMode(); updPrice(); } });
+document.addEventListener("change", e => {
+  if (e.target.id === "j-type") { const sz = ITEM_TYPES[e.target.value]?.[1]; if (sz) $("#j-size").value = sz; }
+  if (e.target.closest("#jobForm")) { updPickupMode(); updPrice(); }
+});
+// While someone's waiting on a check (driver for an answer, buyer for photos), look for news every 20 seconds
+setInterval(() => {
+  if (document.hidden || !document.querySelector("[data-poll]")) return;
+  if (cur === "account") loadMine(); else if (lastTrip && $("#t-done")) refreshTripPanel(lastTrip.id);
+}, 20000);
 
 document.addEventListener("submit", async e => {
   e.preventDefault();
@@ -556,7 +698,7 @@ document.addEventListener("submit", async e => {
     if (saved) {
       f.closest(".card").hidden = true;
       $("#j-done").innerHTML = `<div class="ok"><h3>Posted. One step left.</h3><p class="sub">Your ${esc(j.item)} (${esc(j.from_town)} → ${esc(j.to_town)}, by ${fmtDate(j.window_end)}) goes on the board once it's paid.</p></div>` + payPanel(saved)
-        + `<button class="linkbtn" type="button" data-tab-link="mine">See my posts</button>`;
+        + sellerPanel(saved) + `<button class="linkbtn" type="button" data-tab-link="mine">See my posts</button>`;
     }
   }
   if (f.id === "tripForm") {
@@ -567,7 +709,7 @@ document.addEventListener("submit", async e => {
     if (!row.trip_date || row.trip_date < todayISO()) return showErr("#t-err", "Pick today or a later day.");
     if (!row.driver_name || !validPhone(row.driver_phone)) return showErr("#t-err", "Please add your name and mobile under My account first.");
     showErr("#t-err", "");
-    memo.set({ tfa: row.from_suburb, tta: row.to_suburb, tspace: row.space, tveh: row.vehicle || "" });
+    memo.set({ tfrom: row.from_town, tto: row.to_town, tfa: row.from_suburb, tta: row.to_suburb, tspace: row.space, tdet: row.max_detour_km, tveh: row.vehicle || "" });
     const saved = await save("trips", row, "#t-err", btn);
     if (saved) { f.closest(".card").hidden = true; await refreshTripPanel(saved.id); }
   }

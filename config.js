@@ -9,4 +9,6 @@ window.GTW_CONFIG = {
   // Business bank account for senders to pay into (appears in the text you send them)
   BANK_ACCOUNT: "00-0000-0000000-00",
   BANK_NAME: "Going That Way",
+  // The web address shown in messages buyers send to sellers
+  SITE_NAME: "goingthatway.co.nz",
 };
