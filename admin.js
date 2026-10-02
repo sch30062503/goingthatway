@@ -17,7 +17,7 @@ async function copy(text, btn) {
 const phoneLink = p => p ? `<a href="tel:${esc(String(p).replace(/\s/g, ""))}">${esc(p)}</a>` : "–";
 const btnCopy = (label, text) => `<button class="btn small" type="button" data-copy="${esc(text)}" data-label="${label}">${label}</button>`;
 const tripOf = j => data.trips.find(t => t.id === j.matched_trip);
-const verified = uid => !!data.profiles.find(p => p.id === uid)?.verified_driver;
+const verified = uid => { const p = data.profiles.find(p => p.id === uid); return !!p?.verified_driver && p?.driver_status === "verified"; };
 const profileOf = uid => data.profiles.find(p => p.id === uid) || {};
 const ID_LABEL = { driver_licence: "Driver licence", passport: "Passport", kiwi_access: "Kiwi Access card", other: "Other photo ID" };
 const idChip = st => st === "verified" ? `<span class="chip g">ID verified</span>` : st === "pending" ? `<span class="chip y">ID being checked</span>` : `<span class="chip">ID not verified</span>`;
