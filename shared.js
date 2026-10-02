@@ -15,8 +15,8 @@ const dist = (a, b) => Math.abs(KM[b] - KM[a]);
 // minimum wage for the driver's extra time, +25% on km for a set arrival time.
 // Bulky items pay more per km (they need a ute or trailer) plus a loading allowance.
 const RATE = {
-  onRoute: { small: 0.05, medium: 0.08, large: 0.20 }, // $ per km along the driver's route
-  handling: { small: 0, medium: 0, large: 10 },        // loading, strapping down, unloading a bulky item
+  onRoute: { small: 0.05, medium: 0.08, large: 0.20, xl: 0.30 }, // $ per km along the driver's route (xl: towing a trailer or a van)
+  handling: { small: 0, medium: 0, large: 10, xl: 20 },           // loading, strapping down, unloading a bulky item
   check: 10,            // "check it before you buy": photos from the seller's, buyer says yes or no
   detourKm: 0.80,       // $ per extra km (out and back)
   wage: 23.95,          // NZ adult minimum wage from 1 April 2026, per hour of extra time
@@ -27,19 +27,20 @@ const RATE = {
   feePct: 0.15, feeMin: 3,
 };
 const COVER_FEE = { 500: 0, 1000: 5, 2000: 10 };
-const SIZE_LABEL = { small: "Fits on a car seat", medium: "Fits in a car boot", large: "Ute, van or trailer" };
-const SIZE_SHORT = { small: "Small", medium: "Boot-size", large: "Bulky" };
-// What people buy pick-up only, and the space each usually needs
+const SIZE_LABEL = { small: "Fits on a car seat", medium: "Fits in a car boot", large: "Ute tray", xl: "Trailer or van only" };
+const SIZE_SHORT = { small: "Small", medium: "Boot-size", large: "Ute-size", xl: "Trailer or van" };
+// What people buy pick-up only: the space each usually needs, and whether it's a two-person lift
 const ITEM_TYPES = {
-  furniture: ["Furniture (couch, table, bed, drawers)", "large"],
-  whiteware: ["Whiteware (fridge, washer, dryer)", "large"],
-  bike: ["Bike, e-bike or scooter", "large"],
-  outdoor: ["Outdoor and garden (mower, BBQ, outdoor set)", "large"],
-  building: ["Building materials (timber, doors, windows)", "large"],
-  parts: ["Car, farm or machinery parts", "medium"],
-  tools: ["Tools and equipment", "medium"],
-  boxed: ["Boxes and smaller items", "small"],
-  other: ["Something else", "medium"],
+  big_furniture: ["Big furniture (couch, bed, wardrobe, dining set)", "xl", true],
+  furniture: ["Smaller furniture (armchair, drawers, desk, small table)", "large", false],
+  whiteware: ["Whiteware (fridge, washer, dryer)", "large", true],
+  bike: ["Bike, e-bike or scooter", "large", false],
+  outdoor: ["Outdoor and garden (mower, BBQ, outdoor set)", "large", false],
+  building: ["Building materials (timber, doors, windows)", "large", false],
+  parts: ["Car, farm or machinery parts", "medium", false],
+  tools: ["Tools and equipment", "medium", false],
+  boxed: ["Boxes and smaller items", "small", false],
+  other: ["Something else", "medium", false],
 };
 const itemTypeShort = k => (ITEM_TYPES[k]?.[0] || "").split(" (")[0];
 const SPACE_LABEL = { boot: "Car boot", ute: "Ute tray", trailer: "Trailer", van: "Van" };
@@ -83,7 +84,7 @@ const driverFromPrice = p => { p = Number(p) || 0; return Math.round(p / (1 + RA
 const isExpress = (jobDate, windowEnd) => jobDate && jobDate === windowEnd && windowEnd === todayISO();
 
 // Does a job fit a trip? Same direction, both ends inside the trip, room for it, and the trip day is inside the job's window
-const SPACE_FITS = { boot: ["small", "medium"], ute: ["small", "medium", "large"], trailer: ["small", "medium", "large"], van: ["small", "medium", "large"] };
+const SPACE_FITS = { boot: ["small", "medium"], ute: ["small", "medium", "large"], trailer: ["small", "medium", "large", "xl"], van: ["small", "medium", "large", "xl"] };
 function jobFitsTrip(j, t) {
   if (![t.from_town, t.to_town, j.from_town, j.to_town].every(x => x in KM)) return false;
   const a = KM[t.from_town], b = KM[t.to_town], p = KM[j.from_town], d = KM[j.to_town], lo = Math.min(a, b), hi = Math.max(a, b);

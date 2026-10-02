@@ -75,15 +75,15 @@ function sellerPanel(j) {
 
 // Example prices, worked out live from the same pricing as the real form
 const EXAMPLES = [
-  ["3-seater couch", "Christchurch", "Timaru", "large"],
-  ["Fridge", "Christchurch", "Ashburton", "large"],
+  ["3-seater couch", "Christchurch", "Timaru", "xl"],
+  ["Washing machine", "Christchurch", "Ashburton", "large"],
   ["Kids' bike", "Ashburton", "Timaru", "large"],
   ["Box of tractor parts", "Christchurch", "Timaru", "medium"],
 ];
 function examplePrices() {
   const rows = EXAMPLES.map(([item, f, t, size]) => { const e = estimate({ from: f, to: t, size, handover: "door", cover: 500 });
     return `<div class="ex"><div><b>${item}</b><span>${f} → ${t}</span></div><b class="num">$${e.total}</b></div>`; }).join("");
-  const c = estimate({ from: "Christchurch", to: "Timaru", size: "large", handover: "door", cover: 500 }), cc = estimate({ from: "Christchurch", to: "Timaru", size: "large", handover: "door", cover: 500, check: true });
+  const c = estimate({ from: "Christchurch", to: "Timaru", size: "xl", handover: "door", cover: 500 }), cc = estimate({ from: "Christchurch", to: "Timaru", size: "xl", handover: "door", cover: 500, check: true });
   return `<div class="card examples"><div class="label">Example prices, door to door</div>${rows}
     <p class="fine">Delivered within the week, all in. Add <b>$${cc.total - c.total}</b> to have the driver check it and send you photos before collecting. Collecting it yourself from Christchurch means a ${2 * dist("Christchurch", "Timaru")} km round trip from Timaru, about 4 hours of driving.</p></div>`;
 }
@@ -116,10 +116,12 @@ function send() {
         ${pickup ? `<div class="field"><label for="j-sn">Seller's name</label><input id="j-sn" required></div>
         <div class="field"><label for="j-sp">Seller's mobile</label><input id="j-sp" type="tel" inputmode="tel" required placeholder="So the driver can arrange pickup"></div>` : ""}
         <div class="field full"><label for="j-da">Deliver to</label><input id="j-da" required autocomplete="street-address" placeholder="Street and suburb. Only your driver sees it.">${me.profile?.address ? `<button class="linkbtn" type="button" id="useHome" style="align-self:flex-start;font-size:13px">Use my address: ${esc(me.profile.address)}</button>` : ""}</div>
-        <div class="field full"><label for="j-type">What kind of thing is it?</label><select id="j-type">${Object.entries(ITEM_TYPES).map(([k, [lab]]) => `<option value="${k}"${k === (pickup ? "furniture" : "parts") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
-        <div class="field"><label for="j-size">Space it needs</label><select id="j-size">${Object.entries(SIZE_LABEL).map(([k, lab]) => `<option value="${k}"${k === (pickup ? "large" : "medium") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
+        <div class="field full"><label for="j-type">What kind of thing is it?</label><select id="j-type">${Object.entries(ITEM_TYPES).map(([k, [lab]]) => `<option value="${k}"${k === (pickup ? "big_furniture" : "parts") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
+        <div class="field"><label for="j-size">Space it needs</label><select id="j-size">${Object.entries(SIZE_LABEL).map(([k, lab]) => `<option value="${k}"${k === (pickup ? "xl" : "medium") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="field"><label for="j-by">Deliver by</label><input id="j-by" type="date" min="${todayISO()}" value="${todayISO(6)}" required></div>
         <p class="fine" style="grid-column:1/-1">The more days you allow, the more drivers can take it. Today only is express (+25%).</p>
+        <div class="field full heavyf"><label class="check"><input type="checkbox" id="j-heavy"${pickup ? " checked" : ""}> <span><b>It's a two-person lift</b><br>Too heavy or awkward for one person to carry safely.</span></label>
+          <label class="check" id="j-help-f" style="margin-top:8px"><input type="checkbox" id="j-help"> <span>${pickup ? "The seller will help the driver load it, and someone will be at my place to help unload." : "Someone will help the driver load it, and someone will help unload at the other end."}</span></label></div>
         <div class="field full"><label for="j-pm">How can the driver collect it?</label><select id="j-pm">${Object.entries(PICKUP_LABEL).map(([k, lab]) => `<option value="${k}">${lab}</option>`).join("")}</select></div>
         <div class="field full" id="pm-hours-f"><label for="j-ph" id="pm-hours-l">When is someone there?</label><input id="j-ph" placeholder="e.g. weekdays 8 am to 5 pm, or any time"></div>
         <div class="field full" id="pm-notes-f" hidden><label for="j-pn" id="pm-notes-l">Where is it left?</label><input id="j-pn" placeholder="e.g. under the carport. Only your driver sees this."></div>
@@ -145,7 +147,7 @@ function jobValues() {
   const pm = v("j-pm") || "home";
   const jobDate = v("j-from-d") || todayISO(), windowEnd = v("j-by");
   return {
-    kind: sendMode, item: v("j-item"), item_type: v("j-type") || null, check_first: sendMode === "pickup" && !!$("#j-check")?.checked, listing_url: v("j-link") || null, from_town: v("j-from"), to_town: v("j-to"),
+    kind: sendMode, item: v("j-item"), item_type: v("j-type") || null, heavy: !!$("#j-heavy")?.checked, check_first: sendMode === "pickup" && !!$("#j-check")?.checked, listing_url: v("j-link") || null, from_town: v("j-from"), to_town: v("j-to"),
     pickup_address: v("j-pa") || null, drop_address: v("j-da") || null, seller_name: v("j-sn") || null, seller_phone: v("j-sp") || null,
     size: v("j-size"), job_date: jobDate, window_end: windowEnd,
     deadline_time: v("j-dl") === "by" ? (v("j-dlt") || null) : null,
@@ -165,6 +167,7 @@ function updPickupMode() {
   $("#pm-hours-l").textContent = { home: "When is someone there?", business: "Opening hours", meet: "When can you meet?" }[pm] || "";
   $("#pm-notes-l").textContent = pm === "meet" ? "Where on the route? (e.g. Rakaia BP)" : "Where is it left?";
 }
+function updHeavy() { const h = $("#j-heavy"), f = $("#j-help-f"); if (h && f) f.hidden = !h.checked; }
 function updPrice() {
   const box = $("#j-price"); if (!box) return;
   const j = jobValues(), e = jobPrice(j);
@@ -260,7 +263,7 @@ async function tripJobsPanel(t, verified) {
   const takenHtml = mine.map(j => takenJobCard(j, t)).join("");
   const availHtml = avail.map(j => `<div class="card">
       <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span></div><span class="chip g num">You get $${driverFromPrice(j.price_estimate)}</span></div>
-      <div class="meta"><span>${esc(j.from_town)} → ${esc(j.to_town)}</span>${j.item_type ? `<span class="chip">${esc(itemTypeShort(j.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[j.size] || j.size)}</span>${j.check_first ? `<span class="chip y">Check first: photos for the buyer</span>` : ""}<span class="chip">${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? ": " + esc(j.pickup_hours) : ""}</span><span>by ${fmtDate(j.window_end)}${j.deadline_time ? ", " + fmtTime(j.deadline_time) : ""}</span></div>
+      <div class="meta"><span>${esc(j.from_town)} → ${esc(j.to_town)}</span>${j.item_type ? `<span class="chip">${esc(itemTypeShort(j.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[j.size] || j.size)}</span>${j.heavy ? `<span class="chip y">2-person lift</span>` : ""}${j.check_first ? `<span class="chip y">Check first: photos for the buyer</span>` : ""}<span class="chip">${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? ": " + esc(j.pickup_hours) : ""}</span><span>by ${fmtDate(j.window_end)}${j.deadline_time ? ", " + fmtTime(j.deadline_time) : ""}</span></div>
       ${t.status === "open" && verified ? `<button class="btn go" data-claim="${j.id}:${t.id}">Take it</button>` : ""}
     </div>`).join("");
   return `${takenHtml ? `<div class="label">Jobs you've taken</div>${takenHtml}` : ""}
@@ -270,7 +273,7 @@ async function tripJobsPanel(t, verified) {
 }
 function takenJobCard(j, t) {
   const who = j.kind === "pickup" && j.seller_phone ? { name: j.seller_name || "the seller", phone: j.seller_phone } : { name: j.sender_name, phone: j.sender_phone };
-  const confirmMsg = `Hi ${who.name}, it's ${t.driver_name} from Going That Way. I'm collecting the ${j.item} ${t.trip_date === todayISO() ? "today" : "on " + fmtDate(t.trip_date)}, around ${fmtTime(t.depart_time) || "(time)"}.${j.check_first ? " I'll take a few photos of it for the buyer before loading." : ""} Can you confirm it'll be ready? Thanks!`;
+  const confirmMsg = `Hi ${who.name}, it's ${t.driver_name} from Going That Way. I'm collecting the ${j.item} ${t.trip_date === todayISO() ? "today" : "on " + fmtDate(t.trip_date)}, around ${fmtTime(t.depart_time) || "(time)"}.${j.check_first ? " I'll take a few photos of it for the buyer before loading." : ""}${j.heavy ? " It's a two-person lift, so could you give me a hand loading it?" : ""} Can you confirm it'll be ready? Thanks!`;
   const buyer = (j.sender_name || "the buyer").split(" ")[0];
   const askMsg = `Hi ${buyer}, it's ${t.driver_name} from Going That Way. I'm at the seller's with your ${j.item}. I've sent you photos: open Going That Way, then My account, and tap yes or no. I'll wait a few minutes.`;
   const camera = (kind, label, cls = "btn go") => `<label class="${cls} camera">${label}<input type="file" accept="image/*" capture="environment" data-photo="${j.id}:${kind}"></label>`;
@@ -292,7 +295,7 @@ function takenJobCard(j, t) {
   else step = `<span class="chip g">Delivered. Thanks! Paid in the weekly payout.</span>`;
   return `<div class="card" style="border:2px solid var(--mark)">
     <div class="row"><span class="item">${esc(j.item)}</span><span class="chip g num">You get $${driverFromPrice(j.price_estimate)}</span></div>
-    ${j.item_type || j.check_first ? `<div class="meta">${j.item_type ? `<span class="chip">${esc(itemTypeShort(j.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[j.size] || "")}</span>${j.check_first ? `<span class="chip y">Check first</span>` : ""}</div>` : ""}
+    ${j.item_type || j.check_first || j.heavy ? `<div class="meta">${j.item_type ? `<span class="chip">${esc(itemTypeShort(j.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[j.size] || "")}</span>${j.heavy ? `<span class="chip y">2-person lift</span>` : ""}${j.check_first ? `<span class="chip y">Check first</span>` : ""}</div>` : ""}
     <dl style="display:grid;grid-template-columns:92px 1fr;gap:3px 10px;font-size:13.5px;margin:0">
       <dt style="color:var(--ink3)">Collect</dt><dd style="margin:0">${esc(j.pickup_address)}, ${esc(j.from_town)}</dd>
       <dt style="color:var(--ink3)">How</dt><dd style="margin:0">${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? " · " + esc(j.pickup_hours) : ""}${j.pickup_notes ? " · " + esc(j.pickup_notes) : ""}</dd>
@@ -351,7 +354,7 @@ async function loadBoard() {
   const bj = $("#bj"), bt = $("#bt"); if (!bj) return;
   if (j.error || t.error) { bj.textContent = bt.textContent = "Couldn't load the board. Try again shortly."; return; }
   bj.className = bt.className = "";
-  bj.innerHTML = j.data.length ? j.data.map(r => `<div class="card" style="margin-bottom:8px"><div class="row"><div>${r.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(r.item)}</span></div><span class="chip g num">$${Math.round(r.price_estimate || 0)}</span></div>${plate(r.from_town, r.to_town)}<div class="meta"><span>by ${fmtDate(r.window_end)}</span>${r.item_type ? `<span class="chip">${esc(itemTypeShort(r.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[r.size] || r.size)}</span><span class="chip">${esc(PICKUP_LABEL[r.pickup_mode] || "")}</span>${r.status !== "open" ? `<span class="chip y">Driver found</span>` : ""}</div></div>`).join("")
+  bj.innerHTML = j.data.length ? j.data.map(r => `<div class="card" style="margin-bottom:8px"><div class="row"><div>${r.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(r.item)}</span></div><span class="chip g num">$${Math.round(r.price_estimate || 0)}</span></div>${plate(r.from_town, r.to_town)}<div class="meta"><span>by ${fmtDate(r.window_end)}</span>${r.item_type ? `<span class="chip">${esc(itemTypeShort(r.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[r.size] || r.size)}</span>${r.heavy ? `<span class="chip y">2-person lift</span>` : ""}<span class="chip">${esc(PICKUP_LABEL[r.pickup_mode] || "")}</span>${r.status !== "open" ? `<span class="chip y">Driver found</span>` : ""}</div></div>`).join("")
     : `<div class="empty">No paid jobs right now. Be the first: post a job.</div>`;
   bt.innerHTML = t.data.length ? t.data.map(r => `<div class="card" style="margin-bottom:8px">${plate(r.from_town, r.to_town)}<div class="meta"><span>${fmtDate(r.trip_date)}${r.depart_time ? ", leaving " + fmtTime(r.depart_time) : ""}</span><span class="chip">${esc(SPACE_LABEL[r.space] || r.space)}</span></div></div>`).join("")
     : `<div class="empty">No trips posted yet. Driving this week? Post your trip.</div>`;
@@ -508,8 +511,8 @@ function info() {
     ${sec("For drivers", `<ol class="steps"><li><b>Heading somewhere today?</b> Post your trip.</li><li><b>See paid jobs on your route</b> and what each one pays you.</li><li><b>Take the ones that suit you,</b> text the sender to confirm, collect and deliver.</li><li><b>Get paid weekly</b> by bank transfer.</li></ol>`)}
     ${examplePrices()}
     ${sec("Pricing", `<p class="sub">One all-in price, shown before you post. Our cut is 15% (minimum $3), and the driver always gets the rest.</p><div class="rates">
-      <div><span class="num">5–20c/km</span><span>along the route, depending on the space it needs.</span></div>
-      <div><span class="num">$10</span><span>for loading and unloading a bulky item.</span></div>
+      <div><span class="num">5–30c/km</span><span>along the route, depending on the space it needs (car seat, boot, ute tray, or trailer or van).</span></div>
+      <div><span class="num">$10–20</span><span>for loading and unloading a bulky item.</span></div>
       <div><span class="num">$10</span><span>to the driver if you ask them to check it before collecting.</span></div>
       <div><span class="num">80c/km</span><span>for the detour to the door and back.</span></div>
       <div><span class="num">$23.95/h</span><span>for the driver's extra time, at the NZ minimum wage.</span></div>
@@ -518,7 +521,7 @@ function info() {
     ${sec("Collection and no-shows", `<p class="sub">Say how it can be collected: someone's home (and when), left out, at a business, or meet on the route. Drivers text you before they set off. If they arrive when you said and it isn't available, a no-show fee covering their trip is kept from your payment, and the rest refunded.</p>`)}
     ${sec("For businesses", `<p class="sub">Post jobs first thing. If no driver takes it by your cut-off, we text you to book your usual courier. <button class="linkbtn" data-tab-link="business" type="button">Register interest</button></p>`)}
     ${sec("Put it on your home screen", `<p class="sub">Open it like an app, in one tap.</p><ul class="plainlist"><li><b>iPhone:</b> in Safari, tap the Share button, then <b>Add to Home Screen</b>.</li><li><b>Android:</b> in Chrome, tap the ⋮ menu, then <b>Add to Home screen</b> or <b>Install app</b>.</li></ul>`)}
-    ${sec("Trial service", `<ul class="plainlist"><li>Items aren't insured yet, so please only send things worth less than $500</li><li>Everyone is ID-checked once with a photo ID and selfie; the photos are deleted once checked</li><li>Drivers' licences, WoF and rego are checked before their first job</li><li>Drivers can check an item before accepting it, and refuse anything sealed or suspicious</li><li>Someone at each end helps the driver load and unload anything heavy</li><li>Addresses are only shared with your driver</li><li>Your payment is held until delivery is confirmed</li></ul>`)}
+    ${sec("Trial service", `<ul class="plainlist"><li>Items aren't insured yet, so please only send things worth less than $500</li><li>Everyone is ID-checked once with a photo ID and selfie; the photos are deleted once checked</li><li>Drivers' licences, WoF and rego are checked before their first job</li><li>Drivers can check an item before accepting it, and refuse anything sealed or suspicious</li><li>Drivers usually travel alone, so for a two-person lift someone at each end helps load and unload</li><li>Addresses are only shared with your driver</li><li>Your payment is held until delivery is confirmed</li></ul>`)}
   </section>`;
 }
 
@@ -529,7 +532,7 @@ const views = { send, drive, board, info, mine, business, account };
 function render() {
   $("#view").innerHTML = views[cur]();
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === cur));
-  updPickupMode(); updPrice();
+  updPickupMode(); updHeavy(); updPrice();
   if (cur === "drive") loadAgain();
 }
 function go(tab) { cur = tab; render(); window.scrollTo(0, 0); }
@@ -647,7 +650,8 @@ document.addEventListener("change", async e => {
   } catch (err) { console.error(err); btn.firstChild.textContent = label; inp.disabled = false; inp.value = ""; btn.insertAdjacentHTML("afterend", `<div class="err">Photo didn't upload. Check your signal and try again. <span style="display:block;font-size:12px;opacity:.8">Details: ${esc(err.message || err)}</span></div>`); }
 });
 document.addEventListener("change", e => {
-  if (e.target.id === "j-type") { const sz = ITEM_TYPES[e.target.value]?.[1]; if (sz) $("#j-size").value = sz; }
+  if (e.target.id === "j-type") { const t = ITEM_TYPES[e.target.value]; if (t) { $("#j-size").value = t[1]; $("#j-heavy").checked = t[2]; } }
+  if (e.target.closest("#jobForm")) updHeavy();
   if (e.target.closest("#jobForm")) { updPickupMode(); updPrice(); }
 });
 // While someone's waiting on a check (driver for an answer, buyer for photos), look for news every 20 seconds
@@ -704,6 +708,7 @@ document.addEventListener("submit", async e => {
     if (j.from_town === j.to_town) return showErr("#j-err", "Pick two different towns.");
     if (!j.pickup_address || !j.drop_address) return showErr("#j-err", "Please add the pickup and delivery addresses, so your driver knows where to go. Only your driver sees them.");
     if (j.kind === "pickup" && (!j.seller_name || !validPhone(j.seller_phone || ""))) return showErr("#j-err", "Please add the seller's name and mobile, so the driver can arrange pickup.");
+    if (j.heavy && !$("#j-help")?.checked) return showErr("#j-err", "For a two-person lift, please confirm someone will help the driver at each end. Drivers usually travel alone.");
     if (j.pickup_mode === "left_out" && !j.pickup_notes) return showErr("#j-err", "Please say where it's left, so the driver can find it.");
     if (!j.window_end || j.window_end < todayISO()) return showErr("#j-err", "Pick a deliver-by day, today or later.");
     if (j.job_date > j.window_end) return showErr("#j-err", "The earliest pickup day is after the deliver-by day.");

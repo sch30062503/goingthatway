@@ -109,7 +109,7 @@ function jobCard(j) {
       ${j.seller_name || j.seller_phone ? `<dt>Seller</dt><dd>${esc(j.seller_name || "")} · ${phoneLink(j.seller_phone)}</dd>` : ""}
       <dt>Collect</dt><dd>${esc(j.pickup_address || "–")} · ${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? " · " + esc(j.pickup_hours) : ""}${j.pickup_notes ? " · " + esc(j.pickup_notes) : ""}</dd>
       <dt>Deliver</dt><dd>${esc(j.drop_address || "–")}</dd>
-      <dt>Item</dt><dd>${j.item_type ? esc(itemTypeShort(j.item_type)) + " · " : ""}${esc(SIZE_SHORT[j.size] || j.size)} · not insured (trial)</dd>
+      <dt>Item</dt><dd>${j.item_type ? esc(itemTypeShort(j.item_type)) + " · " : ""}${esc(SIZE_SHORT[j.size] || j.size)}${j.heavy ? " · <b>2-person lift</b>" : ""} · not insured (trial)</dd>
       ${j.check_first ? `<dt>Check first</dt><dd>${esc(CHECK_LABEL[j.check_status] || "not done yet")}${j.check_note ? ` · driver's note: "${esc(j.check_note)}"` : ""}</dd>` : ""}
       ${j.listing_url ? `<dt>Listing</dt><dd><a href="${esc(j.listing_url)}" target="_blank" rel="noopener">Open listing</a></dd>` : ""}
       ${j.description ? `<dt>Notes</dt><dd>${esc(j.description)}</dd>` : ""}

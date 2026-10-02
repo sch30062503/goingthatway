@@ -131,3 +131,4 @@ details.why .rates div{grid-template-columns:52px 1fr}
 .ex div span{font-size:12.5px;color:var(--ink3)}
 .ex>b{font-size:19px;color:var(--sign)}
 .examples .fine{margin-top:8px}
+.heavyf{background:var(--chip);border-radius:8px;padding:10px;display:flex;flex-direction:column}
