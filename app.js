@@ -77,7 +77,8 @@ function sellerPanel(j) {
 const EXAMPLES = [
   ["3-seater couch", "Christchurch", "Timaru", "xl"],
   ["Washing machine", "Christchurch", "Ashburton", "large"],
-  ["Kids' bike", "Ashburton", "Timaru", "large"],
+  ["Kids' bike", "Oamaru", "Dunedin", "large"],
+  ["Dining set", "Christchurch", "Dunedin", "xl"],
   ["Box of tractor parts", "Christchurch", "Timaru", "medium"],
 ];
 function examplePrices() {
@@ -97,10 +98,14 @@ function send() {
     : !idOk() ? gate("Verify your ID first", "Upload a photo of your ID and a selfie. We check it once, then delete the photos. It takes about 2 minutes.", "Verify my ID", "account") : "";
   const head = pickup ? `<h2>Bought it online, but it's pick-up only?</h2><p class="sub">Furniture, whiteware, bikes, parts. Someone already driving that way collects it and brings it to your door. The seller doesn't pack or post a thing.</p>`
     : `<h2>Send something with someone going that way</h2><p class="sub">Bulky, awkward or urgent things couriers won't take, carried by people already making the trip.</p>`;
-  if (g) return `<section>${head}${pickup ? examplePrices() : ""}${g}</section>`;
-  return `<section>
+  const steps = `<ol class="steps only-desk"><li><b>Post it and pay.</b> We hold your money until it's delivered.</li><li><b>Someone already heading your way takes it</b> and arranges pickup with the seller.</li><li><b>Want it checked first?</b> The driver sends photos before loading.</li><li><b>Delivered to your door,</b> with photos at both ends.</li></ol>`;
+  if (g) return `<section class="split"><div class="col-a">${head}${pickup ? examplePrices() : ""}${steps}</div><div class="col-b">${g}</div></section>`;
+  const fold = pickup && me.profile?.id_status === "verified";
+  return `<section class="split"><div class="col-a">
     ${head}
-    ${pickup && !me.profile?.id_status?.match(/verified/) ? examplePrices() : pickup ? `<details class="more"><summary>Example prices</summary>${examplePrices()}</details>` : ""}
+    ${!pickup ? "" : fold ? `<div class="only-desk">${examplePrices()}</div><details class="more only-mob"><summary>Example prices</summary>${examplePrices()}</details>` : examplePrices()}
+    ${steps}
+    </div><div class="col-b">
     <div class="seg" role="tablist">
       <button type="button" role="tab" data-mode="pickup" aria-selected="${pickup}">Pick-up-only buy</button>
       <button type="button" role="tab" data-mode="parcel" aria-selected="${!pickup}">Send something</button>
@@ -141,7 +146,7 @@ function send() {
       <button class="btn go" type="submit">Post and pay</button>
     </form></div>
     <div id="j-done"></div>
-  </section>`;
+  </div></section>`;
 }
 function jobValues() {
   const pm = v("j-pm") || "home";
@@ -194,10 +199,14 @@ function updPrice() {
 function drive() {
   const g = !db ? "" : !me.user ? gate("Create a free account to drive", "Sign up, then apply to drive with your licence and vehicle details. We check them once.", "Sign up or sign in", "account")
     : !driverOk() ? gate("Apply to drive", "Add your driver licence, a selfie and your vehicle's number plate. We check your licence, WoF and rego once, then you can take jobs.", "Apply to drive", "account") : "";
-  if (g) return `<section><h2>Heading between Christchurch and Timaru today?</h2>${g}</section>`;
-  return `<section>
-    <h2>Heading between Christchurch and Timaru today?</h2>
-    <p class="sub">Post your trip and see paid jobs on your route straight away. Take the ones that suit you.</p>
+  const dhead = `<h2>Heading somewhere between Christchurch and Dunedin today?</h2>
+    <p class="sub">Post your trip and see paid jobs on your route straight away. Take the ones that suit you.</p>`;
+  const dsteps = `<ol class="steps only-desk"><li><b>Post your trip,</b> often the morning you're going.</li><li><b>See paid jobs on your route</b> and exactly what each pays you.</li><li><b>Take the ones that suit you,</b> text to confirm, collect and deliver with a photo at each end.</li><li><b>Get paid weekly</b> by bank transfer.</li></ol>`;
+  if (g) return `<section class="split"><div class="col-a">${dhead}${dsteps}</div><div class="col-b">${g}</div></section>`;
+  return `<section class="split"><div class="col-a">
+    ${dhead}
+    ${dsteps}
+    </div><div class="col-b">
     ${notConnected()}
     <div id="t-again"></div>
     <div class="card"><form id="tripForm" novalidate>
@@ -222,7 +231,7 @@ function drive() {
       <button class="btn go" type="submit">Post my trip and see jobs</button>
     </form></div>
     <div id="t-done"></div>
-  </section>`;
+  </div></section>`;
 }
 
 // "Going today?" One tap reposts the driver's last trip for today
@@ -328,7 +337,7 @@ function business() {
       <div class="field"><label for="b-vol">Items sent a week</label><select id="b-vol"><option>1 to 5</option><option>5 to 20</option><option>20 or more</option></select></div>
       ${contactFields("")}
       <div class="field full"><label for="b-email">Email (optional)</label><input id="b-email" type="email" autocomplete="email"></div>
-      <div class="field full"><label for="b-notes">What do you usually send, and where?</label><textarea id="b-notes" placeholder="e.g. Parts from our Ashburton store to Timaru customers, most days"></textarea></div>
+      <div class="field full"><label for="b-notes">What do you usually send, and where?</label><textarea id="b-notes" placeholder="e.g. Parts from our Ashburton store to customers in Timaru and Oamaru, most days"></textarea></div>
     </div>
     <div id="b-err"></div>
     <button class="btn go" type="submit">Register interest</button></form></div>
@@ -342,8 +351,8 @@ function business() {
 function board() {
   setTimeout(loadBoard, 0);
   return `<section><h2>On the road this week</h2><p class="sub">Paid jobs waiting for a driver, and trips people are making. Addresses and contact details are never shown.</p>
-    <div class="label">Paid jobs</div><div id="bj" class="empty">Loading…</div>
-    <div class="label">Drivers heading out</div><div id="bt" class="empty">Loading…</div></section>`;
+    <div class="board-cols"><div><div class="label">Paid jobs</div><div id="bj" class="empty">Loading…</div></div>
+    <div><div class="label">Drivers heading out</div><div id="bt" class="empty">Loading…</div></div></div></section>`;
 }
 async function loadBoard() {
   if (!db) { $("#bj").textContent = $("#bt").textContent = "Not connected yet."; return; }
@@ -506,7 +515,7 @@ async function loadMine() {
 // =====================================================================
 function info() {
   const sec = (t, b) => `<div class="card"><h3>${t}</h3>${b}</div>`;
-  return `<section><h2>How it works</h2>
+  return `<section class="info-grid"><h2>How it works</h2>
     ${sec("Bought something pick-up only?", `<ol class="steps"><li><b>Post it and pay.</b> Paste the listing, add the seller's details and a deliver-by day. We hold your money.</li><li><b>Let the seller know.</b> We give you a message to send them. They don't pack or post anything.</li><li><b>A driver already heading your way takes it</b> and texts the seller to arrange pickup.</li><li><b>Want it checked first?</b> The driver sends you photos from the seller's, and you say yes or no before it's loaded.</li><li><b>It's delivered to your door.</b> Photos at pickup and drop-off, then the driver is paid. Full refund if nobody takes it in time.</li></ol>`)}
     ${sec("For drivers", `<ol class="steps"><li><b>Heading somewhere today?</b> Post your trip.</li><li><b>See paid jobs on your route</b> and what each one pays you.</li><li><b>Take the ones that suit you,</b> text the sender to confirm, collect and deliver.</li><li><b>Get paid weekly</b> by bank transfer.</li></ol>`)}
     ${examplePrices()}

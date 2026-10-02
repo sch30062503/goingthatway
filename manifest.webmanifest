@@ -1,7 +1,7 @@
 {
   "name": "Going That Way",
   "short_name": "Going That Way",
-  "description": "Pick-up-only buys and bulky items, carried by people already driving between Christchurch, Ashburton and Timaru.",
+  "description": "Pick-up-only buys and bulky items, carried by people already driving between Christchurch and Dunedin.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

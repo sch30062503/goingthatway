@@ -1,12 +1,14 @@
 // Shared by the public site and the admin page: towns, pricing, helpers, database client.
 
-// South Island corridor, approximate road km from Hanmer Springs along the main route.
-// Launch corridor is Christchurch - Ashburton - Timaru; the rest is here so the maths works either side.
+// South Island corridor along State Highway 1, approximate road km from Hanmer Springs.
+// Service area: Christchurch to Dunedin and the towns in between (towns a few km off SH1,
+// like Geraldine and Waimate, are counted at their turn-off; the door-stop detour covers the rest).
 const TOWNS = [
   ["Hanmer Springs", 0], ["Culverden", 38], ["Amberley", 88], ["Rangiora", 108],
-  ["Christchurch Airport", 125], ["Christchurch", 135], ["Rolleston", 158], ["Rakaia", 192],
-  ["Ashburton", 220], ["Geraldine", 272], ["Temuka", 280], ["Timaru", 296],
-  ["Oamaru", 380], ["Dunedin", 495],
+  ["Christchurch Airport", 125], ["Christchurch", 135], ["Rolleston", 158], ["Dunsandel", 176], ["Rakaia", 192],
+  ["Ashburton", 220], ["Hinds", 242], ["Geraldine", 268], ["Winchester", 271], ["Temuka", 280], ["Timaru", 296],
+  ["Pareora", 313], ["St Andrews", 320], ["Makikihi", 329], ["Waimate", 340], ["Glenavy", 357],
+  ["Oamaru", 380], ["Hampden", 416], ["Moeraki", 420], ["Palmerston", 435], ["Waikouaiti", 454], ["Dunedin", 495],
 ];
 const KM = Object.fromEntries(TOWNS);
 const dist = (a, b) => Math.abs(KM[b] - KM[a]);
