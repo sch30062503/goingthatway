@@ -56,9 +56,10 @@ function driverCheckCard(p) {
     <dl class="kv"><dt>Mobile</dt><dd>${phoneLink(p.phone)}</dd><dt>Address</dt><dd>${esc(p.address || "–")}</dd>
       <dt>Licence</dt><dd>${esc(p.licence_class || "?")}</dd>
       <dt>Vehicle</dt><dd><b class="num">${plate}</b> · ${esc(p.vehicle_make || "")} · ${esc(SPACE_LABEL[p.vehicle_space] || "")}
-        · <a href="https://www.carjam.co.nz/car/?plate=${plate}" target="_blank" rel="noopener">check on CarJam</a></dd></dl>
+        · <a href="https://www.carjam.co.nz/car/?plate=${plate}" target="_blank" rel="noopener">make and model on CarJam</a>
+        · <a href="https://transact.nzta.govt.nz/transactions/CheckExpiry/entry" target="_blank" rel="noopener">WoF and rego expiry on NZTA</a> (type in ${plate})</dd></dl>
     <div data-docs="${p.id}"><p class="fine">Loading documents…</p></div>
-    <p class="fine">Check: a full or restricted licence (not a learner's), not expired, name matches, selfie matches. Look up the plate: the make and model should match, and enter the WoF and rego expiry dates.</p>
+    <p class="fine">Check: a full or restricted licence (not a learner's), not expired, name matches, selfie matches. Check the make and model match on CarJam, then get the WoF and rego expiry dates from NZTA and enter them below.</p>
     <div class="fields" style="grid-template-columns:1fr 1fr">
       <div class="field"><label for="wof-${p.id}">WoF expires</label><input id="wof-${p.id}" type="date"></div>
       <div class="field"><label for="rego-${p.id}">Rego expires</label><input id="rego-${p.id}" type="date"></div>

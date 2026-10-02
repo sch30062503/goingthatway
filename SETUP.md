@@ -52,7 +52,7 @@ About 20 minutes. Everything here is free.
 1. **Payments to check:** (the sender's ID must be verified first) when the money arrives, tap **Payment received: go live**. The job goes on the board.
 
 **Drivers** post a trip, often on the morning they're going, and see paid jobs on their route.
-2. **Driver checks:** check the licence (full or restricted, not expired, selfie matches). Tap **check on CarJam** for the plate, and enter the WoF and rego expiry dates. Tap **Approve driver: delete photos**. Their trips then go live instantly and they can take jobs themselves.
+2. **Driver checks:** check the licence (full or restricted, not expired, selfie matches). Check the make and model on CarJam, then use the **NZTA expiry check** link for the WoF and rego dates and enter them. Tap **Approve driver: delete photos**. Their trips then go live instantly and they can take jobs themselves.
 3. Drivers tap **Take it**, text the sender or seller to confirm pickup, then take a **pickup photo** (marks it collected) and a **drop-off photo** (marks it delivered). Photos show on the job in admin and in the sender's My posts. You don't need to do anything.
 4. **Payouts:** delivered jobs appear here with each driver's total. Pay them by bank transfer, then tap **Mark all paid**.
 
