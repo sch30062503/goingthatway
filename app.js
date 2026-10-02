@@ -73,6 +73,21 @@ function sellerPanel(j) {
     <div style="display:flex;gap:6px;flex-wrap:wrap">${copyBtn(msg, "Copy message")}${j.seller_phone ? `<a class="btn small" href="${smsLink(j.seller_phone, msg)}">Text it to ${esc((j.seller_name || "the seller").split(" ")[0])}</a>` : ""}</div></div>`;
 }
 
+// Example prices, worked out live from the same pricing as the real form
+const EXAMPLES = [
+  ["3-seater couch", "Christchurch", "Timaru", "large"],
+  ["Fridge", "Christchurch", "Ashburton", "large"],
+  ["Kids' bike", "Ashburton", "Timaru", "large"],
+  ["Box of tractor parts", "Christchurch", "Timaru", "medium"],
+];
+function examplePrices() {
+  const rows = EXAMPLES.map(([item, f, t, size]) => { const e = estimate({ from: f, to: t, size, handover: "door", cover: 500 });
+    return `<div class="ex"><div><b>${item}</b><span>${f} → ${t}</span></div><b class="num">$${e.total}</b></div>`; }).join("");
+  const c = estimate({ from: "Christchurch", to: "Timaru", size: "large", handover: "door", cover: 500 }), cc = estimate({ from: "Christchurch", to: "Timaru", size: "large", handover: "door", cover: 500, check: true });
+  return `<div class="card examples"><div class="label">Example prices, door to door</div>${rows}
+    <p class="fine">Delivered within the week, all in. Add <b>$${cc.total - c.total}</b> to have the driver check it and send you photos before collecting. Collecting it yourself from Christchurch means a ${2 * dist("Christchurch", "Timaru")} km round trip from Timaru, about 4 hours of driving.</p></div>`;
+}
+
 // =====================================================================
 // SEND
 // =====================================================================
@@ -82,9 +97,10 @@ function send() {
     : !idOk() ? gate("Verify your ID first", "Upload a photo of your ID and a selfie. We check it once, then delete the photos. It takes about 2 minutes.", "Verify my ID", "account") : "";
   const head = pickup ? `<h2>Bought it online, but it's pick-up only?</h2><p class="sub">Furniture, whiteware, bikes, parts. Someone already driving that way collects it and brings it to your door. The seller doesn't pack or post a thing.</p>`
     : `<h2>Send something with someone going that way</h2><p class="sub">Bulky, awkward or urgent things couriers won't take, carried by people already making the trip.</p>`;
-  if (g) return `<section>${head}${g}</section>`;
+  if (g) return `<section>${head}${pickup ? examplePrices() : ""}${g}</section>`;
   return `<section>
     ${head}
+    ${pickup && !me.profile?.id_status?.match(/verified/) ? examplePrices() : pickup ? `<details class="more"><summary>Example prices</summary>${examplePrices()}</details>` : ""}
     <div class="seg" role="tablist">
       <button type="button" role="tab" data-mode="pickup" aria-selected="${pickup}">Pick-up-only buy</button>
       <button type="button" role="tab" data-mode="parcel" aria-selected="${!pickup}">Send something</button>
@@ -490,6 +506,7 @@ function info() {
   return `<section><h2>How it works</h2>
     ${sec("Bought something pick-up only?", `<ol class="steps"><li><b>Post it and pay.</b> Paste the listing, add the seller's details and a deliver-by day. We hold your money.</li><li><b>Let the seller know.</b> We give you a message to send them. They don't pack or post anything.</li><li><b>A driver already heading your way takes it</b> and texts the seller to arrange pickup.</li><li><b>Want it checked first?</b> The driver sends you photos from the seller's, and you say yes or no before it's loaded.</li><li><b>It's delivered to your door.</b> Photos at pickup and drop-off, then the driver is paid. Full refund if nobody takes it in time.</li></ol>`)}
     ${sec("For drivers", `<ol class="steps"><li><b>Heading somewhere today?</b> Post your trip.</li><li><b>See paid jobs on your route</b> and what each one pays you.</li><li><b>Take the ones that suit you,</b> text the sender to confirm, collect and deliver.</li><li><b>Get paid weekly</b> by bank transfer.</li></ol>`)}
+    ${examplePrices()}
     ${sec("Pricing", `<p class="sub">One all-in price, shown before you post. Our cut is 15% (minimum $3), and the driver always gets the rest.</p><div class="rates">
       <div><span class="num">5–20c/km</span><span>along the route, depending on the space it needs.</span></div>
       <div><span class="num">$10</span><span>for loading and unloading a bulky item.</span></div>
