@@ -2,10 +2,11 @@
 -- Needs 010_phone_alerts.sql first (it switches on pg_net and creates app_settings).
 -- Paste into Supabase SQL Editor -> New query -> Run. Safe to run more than once.
 -- Then store your Resend API key with the one-line insert at the bottom (in its own query).
+-- Emails come from hello@ (a real address that forwards to the admin), which spam filters trust more than noreply@.
 
 -- Defaults you can change later with an update to app_settings
 insert into public.app_settings (key, value) values
-  ('email_from', 'Going That Way <noreply@goingthatway.co.nz>'),
+  ('email_from', 'Going That Way <hello@goingthatway.co.nz>'),
   ('email_reply_to', 'hello@goingthatway.co.nz'),
   ('site_url', 'https://goingthatway.co.nz')
 on conflict (key) do nothing;
@@ -44,8 +45,10 @@ begin
   begin
     perform net.http_post(
       url := 'https://api.resend.com/emails',
-      body := jsonb_build_object('from', coalesce(public.setting('email_from'), 'Going That Way <noreply@goingthatway.co.nz>'),
+      body := jsonb_build_object('from', coalesce(public.setting('email_from'), 'Going That Way <hello@goingthatway.co.nz>'),
                                  'to', jsonb_build_array(v_to), 'subject', p_subject, 'html', p_html,
+                                 -- a plain-text copy too: spam filters trust emails that have one
+                                 'text', trim(regexp_replace(regexp_replace(regexp_replace(replace(replace(replace(p_html, '</p>', E'\n\n'), '</h2>', E'\n\n'), '</div>', E'\n\n'), '<a href="([^"]*)"[^>]*>([^<]*)</a>', '\2: \1', 'g'), '<[^>]+>', '', 'g'), E'\n{3,}', E'\n\n', 'g')),
                                  'reply_to', coalesce(public.setting('email_reply_to'), 'hello@goingthatway.co.nz')),
       headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || v_key));
   exception when others then null;
@@ -164,3 +167,6 @@ create trigger job_reports_email_events after update on public.job_reports for e
 -- ---------- Your Resend API key ----------
 -- Run this on its own, with your key in place of re_xxx (it never goes in the public code):
 -- insert into public.app_settings (key, value) values ('resend_key', 're_xxx') on conflict (key) do update set value = excluded.value;
+
+-- Earlier installs sent from noreply@: switch to hello@
+update public.app_settings set value = 'Going That Way <hello@goingthatway.co.nz>' where key = 'email_from' and value like '%noreply@%';

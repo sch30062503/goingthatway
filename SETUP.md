@@ -62,7 +62,7 @@ About 20 minutes. Everything here is free.
 
 **Phone alerts (free):** install the **ntfy** app, tap +, and subscribe to the channel name shown when you ran `010_phone_alerts.sql` (run `select value from app_settings where key = 'ntfy_topic';` to see it again). You'll get an alert for new jobs (urgent ones loudly), problems, declined checks, and ID or driver checks waiting. Alerts never include names, numbers or addresses.
 
-**Emails:** members get an email at each step (job posted, live, driver found, check photos ready, collected, delivered, ID and driver checks, problem sorted) through Resend, from noreply@goingthatway.co.nz with replies going to hello@goingthatway.co.nz. Password resets go through the same Resend account, set up as Supabase's SMTP server.
+**Emails:** members get an email at each step (job posted, live, driver found, check photos ready, collected, delivered, ID and driver checks, problem sorted) through Resend, from hello@goingthatway.co.nz (replies forward to the admin). Password resets go through the same Resend account, set up as Supabase's SMTP server.
 
 **If something goes wrong**
 - No driver by the deliver-by day: copy the "no driver yet" text and offer more days, meeting on the route, or a full refund.

@@ -616,7 +616,7 @@ document.addEventListener("click", async e => {
     fs.disabled = true; fs.textContent = "Sending…";
     const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
     fs.disabled = false; fs.textContent = "Email me a reset link";
-    msg.innerHTML = error ? `<div class="err">${niceError(error)}</div>` : `<div class="ok"><p class="sub">If there's an account for ${esc(email)}, a reset link is on its way. Check your inbox and junk folder.</p></div>`;
+    msg.innerHTML = error ? `<div class="err">${niceError(error)}</div>` : `<div class="ok"><p class="sub">If there's an account for ${esc(email)}, a reset link is on its way from hello@goingthatway.co.nz. If it's not in your inbox within a few minutes, check your junk folder.</p></div>`;
     return;
   }
   if (e.target.closest("#signOut")) { await db.auth.signOut(); await loadMe(); return go("account"); }
@@ -798,7 +798,7 @@ document.addEventListener("submit", async e => {
     const saved = await save("jobs", row, "#j-err", btn);
     if (saved) {
       f.closest(".card").hidden = true;
-      $("#j-done").innerHTML = `<div class="ok"><h3>Posted. One step left.</h3><p class="sub">Your ${esc(j.item)} (${esc(j.from_town)} → ${esc(j.to_town)}, by ${fmtDate(j.window_end)}) goes on the board once it's paid.</p></div>` + payPanel(saved)
+      $("#j-done").innerHTML = `<div class="ok"><h3>Posted. One step left.</h3><p class="sub">Your ${esc(j.item)} (${esc(j.from_town)} → ${esc(j.to_town)}, by ${fmtDate(j.window_end)}) goes on the board once it's paid. We've emailed you the details too. If you can't see it, check your junk folder and mark it "not junk".</p></div>` + payPanel(saved)
         + sellerPanel(saved) + `<button class="linkbtn" type="button" data-tab-link="mine">See my posts</button>`;
     }
   }
