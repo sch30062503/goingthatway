@@ -8,7 +8,7 @@ About 20 minutes. Everything here is free.
    - Name: `goingthatway`
    - Region: **Sydney** (closest to NZ)
    - Save the database password somewhere safe. You won't need to give it to anyone.
-2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `010_phone_alerts.sql`, so a new project only needs `schema.sql`.)
+2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `011_emails.sql`, so a new project only needs `schema.sql`.)
 3. Go to **Authentication** → **Sign In / Providers**:
    - Turn **off** **Allow anonymous sign-ins**. Everyone now makes an account.
    - Under **Email**, turn **off** **Confirm email** for the trial. Supabase's free email only reaches your own team, so confirmation emails wouldn't arrive. Everyone is ID-checked by you instead.
@@ -61,6 +61,8 @@ About 20 minutes. Everything here is free.
 **Problems:** anyone on a job can tap **Report a problem**. Reports land under **Problems** with the job's photos. Type what you did and tap **Mark sorted**. The person who reported it sees your note.
 
 **Phone alerts (free):** install the **ntfy** app, tap +, and subscribe to the channel name shown when you ran `010_phone_alerts.sql` (run `select value from app_settings where key = 'ntfy_topic';` to see it again). You'll get an alert for new jobs (urgent ones loudly), problems, declined checks, and ID or driver checks waiting. Alerts never include names, numbers or addresses.
+
+**Emails:** members get an email at each step (job posted, live, driver found, check photos ready, collected, delivered, ID and driver checks, problem sorted) through Resend, from noreply@goingthatway.co.nz with replies going to hello@goingthatway.co.nz. Password resets go through the same Resend account, set up as Supabase's SMTP server.
 
 **If something goes wrong**
 - No driver by the deliver-by day: copy the "no driver yet" text and offer more days, meeting on the route, or a full refund.

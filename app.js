@@ -4,7 +4,9 @@
 
 const db = makeClient();
 const cfg = window.GTW_CONFIG || {};
-let cur = "send", sendMode = "pickup";
+let cur = /^#(account|mine)$/.test(location.hash) ? "account" : "send", sendMode = "pickup";
+// Arrived from a "reset your password" email link
+let recovery = /type=recovery/.test(location.hash);
 
 // ---------- remembered details (this device only) ----------
 const memo = {
@@ -402,13 +404,19 @@ const ID_LABEL = { driver_licence: "NZ driver licence", passport: "Passport", ki
 const fileField = (id, label, hint, capture) => `<div class="field full"><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/*"${capture ? ` capture="${capture}"` : ""} required>${hint ? `<span class="hint">${hint}</span>` : ""}</div>`;
 function account() {
   if (!db) return `<section><h2>My account</h2>${notConnected()}</section>`;
+  if (recovery) return `<section><h2>Choose a new password</h2>
+    <div class="card"><form id="npForm" novalidate><div class="fields">
+      <div class="field full"><label for="np-pass">New password</label><input id="np-pass" type="password" autocomplete="new-password" minlength="8" required><span class="hint">At least 8 characters</span></div>
+    </div><div id="np-err"></div><button class="btn go" type="submit">Save new password</button></form></div></section>`;
   if (!me.user) return `<section>
     <h2>Sign in or create an account</h2>
     <div class="card"><h3>Sign in</h3><form id="siForm" novalidate><div class="fields">
       <div class="field full"><label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username" required></div>
       <div class="field full"><label for="si-pass">Password</label><input id="si-pass" type="password" autocomplete="current-password" required></div>
     </div><div id="si-err"></div><button class="btn go" type="submit">Sign in</button>
-    <p class="fine">Forgotten your password? Resetting by email is coming soon. For now, keep it somewhere safe.</p></form></div>
+    <button class="linkbtn" type="button" id="forgotBtn" style="align-self:flex-start;font-size:13.5px">Forgotten your password?</button>
+    <div id="forgotBox" hidden><div class="field"><label for="fp-email">Your email</label><input id="fp-email" type="email" autocomplete="email"></div>
+      <button class="btn" type="button" id="forgotSend" style="margin-top:8px">Email me a reset link</button><div id="fp-msg"></div></div></form></div>
     <div class="card"><h3>New here? Create a free account</h3><form id="suForm" novalidate><div class="fields">
       <div class="field full"><label for="su-name">Full name</label><input id="su-name" autocomplete="name" required></div>
       <div class="field full"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email" required></div>
@@ -600,6 +608,17 @@ document.addEventListener("click", async e => {
   const tab = e.target.closest(".tabs [data-tab]"); if (tab) return go(tab.dataset.tab);
   const link = e.target.closest("[data-tab-link]"); if (link) return go(link.dataset.tabLink);
   if (e.target.closest("#mineBtn")) return go("account");
+  if (e.target.closest("#forgotBtn")) { $("#forgotBox").hidden = false; $("#fp-email").value = v("si-email"); $("#fp-email").focus(); return; }
+  const fs = e.target.closest("#forgotSend");
+  if (fs) {
+    const email = v("fp-email"), msg = $("#fp-msg");
+    if (!/^\S+@\S+\.\S+$/.test(email)) { msg.innerHTML = `<div class="err">Please enter the email you signed up with.</div>`; return; }
+    fs.disabled = true; fs.textContent = "Sending…";
+    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    fs.disabled = false; fs.textContent = "Email me a reset link";
+    msg.innerHTML = error ? `<div class="err">${niceError(error)}</div>` : `<div class="ok"><p class="sub">If there's an account for ${esc(email)}, a reset link is on its way. Check your inbox and junk folder.</p></div>`;
+    return;
+  }
   if (e.target.closest("#signOut")) { await db.auth.signOut(); await loadMe(); return go("account"); }
   const md = e.target.closest("[data-mode]"); if (md) { sendMode = md.dataset.mode; return render(); }
   const cx = e.target.closest("[data-cancel]");
@@ -732,6 +751,14 @@ document.addEventListener("submit", async e => {
     if (!data.session) { f.closest(".card").innerHTML = `<div class="ok"><h3>Check your email</h3><p class="sub">We've sent a link to ${esc(email)} to confirm your account.</p></div>`; return; }
     await loadMe(); go("account");
   });
+  if (f.id === "npForm") return busy("#np-err", async () => {
+    const pass = $("#np-pass").value;
+    if (pass.length < 8) throw new Error("Please use a password of at least 8 characters.");
+    const { error } = await db.auth.updateUser({ password: pass }); if (error) throw error;
+    recovery = false; history.replaceState(null, "", location.pathname);
+    await loadMe(); go("account");
+    $("#view").insertAdjacentHTML("afterbegin", `<div class="ok" style="margin-bottom:10px"><h3>Password changed</h3><p class="sub">You're signed in with your new password.</p></div>`);
+  });
   if (f.id === "pfForm") return busy("#pf-err", async () => {
     const row = { name: v("pf-name"), phone: v("pf-phone"), address: v("pf-addr") };
     if (!row.name || !row.address) throw new Error("Please fill in your name and address.");
@@ -800,5 +827,11 @@ document.addEventListener("submit", async e => {
 });
 
 $("#view").innerHTML = `<div class="empty">Loading…</div>`;
+// Contact email in the footer, if set
+if (cfg.CONTACT_EMAIL) { const f = document.querySelector(".foot p"); if (f) f.insertAdjacentHTML("beforeend", ` · <a href="mailto:${esc(cfg.CONTACT_EMAIL)}">${esc(cfg.CONTACT_EMAIL)}</a>`); }
+if (recovery) cur = "account";
 loadMe().then(render);
-if (db) db.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT") loadMe().then(render); });
+if (db) db.auth.onAuthStateChange(ev => {
+  if (ev === "SIGNED_OUT") loadMe().then(render);
+  if (ev === "PASSWORD_RECOVERY") { recovery = true; cur = "account"; loadMe().then(render); }
+});

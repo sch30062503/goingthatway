@@ -7,7 +7,7 @@ window.GTW_CONFIG = {
   // Shown to customers as the number to text with questions
   CONTACT_TEXT: "Text us any time",
   // Shown on the terms and privacy pages (leave blank until you have them)
-  CONTACT_EMAIL: "",
+  CONTACT_EMAIL: "hello@goingthatway.co.nz",
   CONTACT_PHONE: "",
   // Business bank account for senders to pay into (appears in the text you send them)
   BANK_ACCOUNT: "00-0000-0000000-00",
