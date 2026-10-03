@@ -4,7 +4,8 @@
 
 const db = makeClient();
 const cfg = window.GTW_CONFIG || {};
-let cur = /^#(account|mine)$/.test(location.hash) ? "account" : "send", sendMode = "pickup";
+let cur = /^#(account|mine)$/.test(location.hash) ? "account" : location.hash === "#drive" ? "drive" : "send", sendMode = "pickup";
+let prefill = null;   // a past job to copy into the Send form ("Post again")
 // Arrived from a "reset your password" email link
 let recovery = /type=recovery/.test(location.hash);
 
@@ -117,6 +118,8 @@ function reportForm(id, role) {
     <button class="btn go" type="button" data-report="${id}">Send to Going That Way</button>
     <p class="fine">Only the Going That Way admin sees this, and we'll get back to you. If anyone's in danger, call 111 first.</p></div></details>`;
 }
+const THUMB_UP = `<svg class="thumb" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v11H3V10h4zm2 11h8.3a2 2 0 0 0 2-1.6l1.4-7A2 2 0 0 0 18.7 10H14l.8-4.2A1.6 1.6 0 0 0 13.2 4L9 9.6V21z" fill="currentColor"/></svg>`;
+const THUMB_DOWN = `<svg class="thumb" viewBox="0 0 24 24" aria-hidden="true" style="transform:rotate(180deg)"><path d="M7 10v11H3V10h4zm2 11h8.3a2 2 0 0 0 2-1.6l1.4-7A2 2 0 0 0 18.7 10H14l.8-4.2A1.6 1.6 0 0 0 13.2 4L9 9.6V21z" fill="currentColor"/></svg>`;
 const REPORT_STATUS = r => r.status === "resolved" ? `Sorted${r.admin_note ? ": " + esc(r.admin_note) : ""}` : "We're looking into it";
 
 // =====================================================================
@@ -186,6 +189,20 @@ function send() {
     </form></div>
     <div id="j-done"></div>
   </div></section>`;
+}
+// "Post again": copy a past job into the form (new dates; the order number is left blank)
+function applyPrefill() {
+  const j = prefill; prefill = null; if (!$("#jobForm")) return;
+  const set = (id, val) => { const el = $("#" + id); if (el && val != null && val !== "") el.value = val; };
+  set("j-item", j.item); set("j-link", j.listing_url); set("j-from", j.from_town); set("j-to", j.to_town); set("j-pa", j.pickup_address);
+  set("j-sn", j.seller_name); set("j-sp", j.seller_phone); set("j-da", j.drop_address); set("j-type", j.item_type); set("j-size", j.size);
+  set("j-store", j.store_name); set("j-onm", j.order_name); set("j-ph", j.pickup_hours); set("j-pn", j.pickup_notes); set("j-desc", j.description);
+  if (j.kind !== "collect") set("j-pm", j.pickup_mode);
+  if ($("#j-heavy")) $("#j-heavy").checked = !!j.heavy;
+  if ($("#j-check")) $("#j-check").checked = !!j.check_first;
+  updPickupMode(); updHeavy(); updUrgent(); updPrice();
+  $("#jobForm").insertAdjacentHTML("afterbegin", `<div class="note">Copied from ${esc(j.item)} (${jobRef(j)}). Check the details and choose new dates.${j.kind === "collect" ? " Add the new order number." : ""}</div>`);
+  $("#jobForm").scrollIntoView({ behavior: "smooth" });
 }
 function jobValues() {
   const pm = v("j-pm") || "home";
@@ -279,6 +296,13 @@ function drive() {
       <button class="btn go" type="submit">Post my trip and see jobs</button>
     </form></div>
     <div id="t-done"></div>
+    <div class="card" id="alertsCard"><h3>Email me new jobs on my route</h3>
+      <p class="sub">Get an email as soon as a paid job comes up between two towns, sized for your vehicle.</p>
+      <div id="alertList" class="fine">Loading…</div>
+      <form id="alForm" novalidate><div class="fields">
+        <div class="field"><label for="al-from">From</label><select id="al-from">${townOptions(memo.get().tfrom || "Christchurch")}</select></div>
+        <div class="field"><label for="al-to">To</label><select id="al-to">${townOptions(memo.get().tto || "Timaru")}</select></div>
+      </div><div id="al-err"></div><button class="btn" type="submit">Add this route</button></form></div>
   </div></section>`;
 }
 
@@ -307,6 +331,16 @@ async function postAgain(mode) {
   const btn = document.querySelector('[data-again="now"]');
   const saved = await save("trips", row, "#again-err", btn);
   if (saved) { $("#t-again").innerHTML = ""; $("#tripForm").closest(".card").hidden = true; await refreshTripPanel(saved.id); }
+}
+
+// Route alerts
+async function loadAlerts() {
+  const box = $("#alertList"); if (!box || !db || !me.user) return;
+  const { data, error } = await db.from("route_alerts").select("*").order("created_at");
+  if (error) { box.textContent = "Route alerts aren't switched on yet."; return; }
+  box.className = "";
+  box.innerHTML = data.length ? `<div class="alerts">${data.map(a => `<span class="chip g">${esc(a.from_town)} → ${esc(a.to_town)} <button class="linkbtn" type="button" data-unalert="${a.id}" aria-label="Stop alerts for ${esc(a.from_town)} to ${esc(a.to_town)}">stop</button></span>`).join("")}</div>`
+    : `<p class="fine">No routes yet. Add the trips you make most.</p>`;
 }
 
 // Jobs on a trip's route: taken jobs (full details) and available ones (take it)
@@ -544,6 +578,9 @@ async function loadEarnings(tripIds) {
       ${going.length ? `<div><span class="label">On the go</span><b class="num">$${sum(going)}</b><span class="fine">once delivered</span></div>` : ""}
     </div>
     ${done.length ? `<details class="more"><summary>Job by job</summary><ul class="plainlist" style="margin-top:6px">${[...done].sort((a, b) => String(b.delivered_at || b.created_at).localeCompare(String(a.delivered_at || a.created_at))).map(j => `<li><span class="num">$${driverPay(j)}</span> · ${esc(j.item)} (${jobRef(j)}) · ${j.driver_paid ? `paid ${j.driver_paid_at ? new Date(j.driver_paid_at).toLocaleDateString("en-NZ") : ""}` : "to be paid"}</li>`).join("")}</ul></details>` : ""}
+    ${(() => { const rated = (data || []).filter(j => j.rating); return rated.length ? `<p class="fine">${THUMB_UP} Thumbs up from buyers: ${rated.filter(j => j.rating > 0).length} of ${rated.length}</p>` : ""; })()}
+    ${(() => { const P = me.profile || {}, soon = todayISO(14), now = todayISO(); const w = [["WoF", P.wof_expiry], ["Rego", P.rego_expiry]].filter(([, d]) => d && d <= soon);
+      return w.map(([k, d]) => `<div class="${d < now ? "err" : "note"}">Your ${k} ${d < now ? "has run out" : "runs out on " + fmtDate(d)}. ${d < now ? "You can't take jobs until it's renewed. " : ""}Once it's renewed, email hello@goingthatway.co.nz with the new date.</div>`).join(""); })()}
     ${!me.profile?.bank_account && done.length ? `<div class="note">Add your bank account below so we can pay you.</div>` : ""}`;
 }
 async function loadMine() {
@@ -578,10 +615,14 @@ async function loadMine() {
       ${progress(r)}
       ${["matched", "collected", "delivered", "declined"].includes(r.status) ? `<div data-driverfor="${r.id}" class="fine">Finding driver details…</div><div data-photos="${r.id}"></div>` : ""}
       ${checkPanel(r)}
+      ${r.status === "delivered" ? (r.rating ? `<p class="fine">You gave this a thumbs ${r.rating > 0 ? "up" : "down"}. Thanks for letting us know.</p>`
+        : `<div class="rate"><span class="sub">How did it go?</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small go" type="button" data-rate="${r.id}:up">${THUMB_UP} Thumbs up</button><button class="btn small" type="button" data-rate="${r.id}:down">${THUMB_DOWN} Thumbs down</button></div>
+          <div id="rn-${r.id}" hidden class="field"><label for="rt-${r.id}">What went wrong? <span class="hint">(optional, only we see this)</span></label><textarea id="rt-${r.id}" maxlength="1000"></textarea></div></div>`) : ""}
       ${r.status === "declined" ? `<p class="fine">It wasn't collected. We'll refund you everything except the driver's trip, usually within 2 working days.</p>` : ""}
       ${r.status === "new" && r.payment === "unpaid" ? payPanel(r) : ""}
       ${["new", "open"].includes(r.status) && r.kind === "pickup" ? `<details class="more"><summary>Message for the seller</summary>${sellerPanel(r)}</details>` : ""}
       ${(reps[r.id] || []).map(x => `<div class="note">You reported: <b>${esc(REPORT_KINDS[x.kind] || x.kind)}</b> on ${new Date(x.created_at).toLocaleDateString("en-NZ")}. ${REPORT_STATUS(x)}</div>`).join("")}
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" type="button" data-again-job="${r.id}">Post again</button></div>
       ${r.status !== "cancelled" ? reportForm(r.id, "sender") : ""}</div>`);
   }
   box.className = "";
@@ -592,10 +633,14 @@ async function loadMine() {
   showPhotos(db);
   for (const r of (j.data || [])) {
     const el = document.querySelector(`[data-driverfor="${r.id}"]`); if (!el) continue;
-    const { data } = await db.rpc("my_job_driver", { p_job: r.id });
+    let { data, error } = await db.rpc("job_driver_card", { p_job: r.id });
+    if (error) ({ data } = await db.rpc("my_job_driver", { p_job: r.id }));
     const d = data?.[0];
     const coll = r.kind === "collect" && r.status === "matched" && d ? `<div class="note" style="margin-top:6px">If ${esc(r.store_name || "the store")} needs you to name who's collecting order <b class="num">${esc(r.order_ref || "")}</b>, add <b>${esc(d.driver_name)}</b>.</div>` : "";
-    el.innerHTML = d ? coll + `Driver: <b>${esc(d.driver_name)}</b> · <a href="${telLink(d.driver_phone)}">${esc(d.driver_phone)}</a> · ${fmtDate(d.trip_date)}${d.depart_time ? ", leaving " + fmtTime(d.depart_time) : ""}.${r.status === "matched" ? " They'll text before pickup." : ""}` : "";
+    const card = d && d.jobs_done !== undefined ? `<div class="drivercard"><div class="av" aria-hidden="true">${esc((d.driver_name || "?").trim()[0] || "?")}</div><div><b>${esc(d.driver_name)}</b>
+        <span class="fine">${esc([d.vehicle_make, SPACE_LABEL[d.vehicle_space]].filter(Boolean).join(" · "))}</span>
+        <span class="fine">${d.verified ? "ID, licence, WoF and rego checked · " : ""}${d.jobs_done ? `${d.jobs_done} job${d.jobs_done === 1 ? "" : "s"} done` : "New driver"}${d.thumbs_total ? ` · ${THUMB_UP} ${d.thumbs_up} of ${d.thumbs_total}` : ""}</span></div></div>` : "";
+    el.innerHTML = d ? coll + card + `Driver: <b>${esc(d.driver_name)}</b> · <a href="${telLink(d.driver_phone)}">${esc(d.driver_phone)}</a> · ${fmtDate(d.trip_date)}${d.depart_time ? ", leaving " + fmtTime(d.depart_time) : ""}.${r.status === "matched" ? " They'll text before pickup." : ""}` : "";
   }
 }
 
@@ -632,7 +677,8 @@ function render() {
   $("#view").innerHTML = views[cur]();
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === cur));
   updPickupMode(); updHeavy(); updUrgent(); updPrice(); TS.tries = 0; tsMount();
-  if (cur === "drive") loadAgain();
+  if (cur === "drive") { loadAgain(); loadAlerts(); }
+  if (cur === "send" && prefill) applyPrefill();
 }
 function go(tab) { cur = tab; render(); window.scrollTo(0, 0); }
 function showErr(box, msg) { $(box).innerHTML = msg ? `<div class="err">${msg}</div>` : ""; }
@@ -685,6 +731,18 @@ document.addEventListener("click", async e => {
     return loadMine();
   }
   const cp = e.target.closest("[data-copy]"); if (cp) return copyText(cp.dataset.copy, cp);
+  const ua = e.target.closest("[data-unalert]"); if (ua) { await db.from("route_alerts").delete().eq("id", ua.dataset.unalert); return loadAlerts(); }
+  const ag2 = e.target.closest("[data-again-job]");
+  if (ag2) { const { data } = await db.from("jobs").select("*").eq("id", ag2.dataset.againJob).single(); if (data) { prefill = data; sendMode = data.kind; go("send"); } return; }
+  const rt = e.target.closest("[data-rate]");
+  if (rt) {
+    const [id, how] = rt.dataset.rate.split(":");
+    if (how === "down" && !rt.dataset.ready) { const nb = $("#rn-" + id); if (nb) nb.hidden = false; rt.dataset.ready = "1"; rt.textContent = "Send thumbs down"; return; }
+    rt.disabled = true;
+    const { error } = await db.rpc("rate_job", { p_job: id, p_up: how === "up", p_note: $("#rt-" + id)?.value || null });
+    if (error) { rt.disabled = false; rt.insertAdjacentHTML("afterend", `<div class="err">${niceError(error)}</div>`); return; }
+    return loadMine();
+  }
   const rp = e.target.closest("[data-report]");
   if (rp) {
     const id = rp.dataset.report, box = rp.closest("[data-reportbox]"), details = ($("#rd-" + id)?.value || "").trim(), file = $("#rp-" + id)?.files?.[0];
@@ -817,6 +875,12 @@ document.addEventListener("submit", async e => {
     recovery = false; history.replaceState(null, "", location.pathname);
     await loadMe(); go("account");
     $("#view").insertAdjacentHTML("afterbegin", `<div class="ok" style="margin-bottom:10px"><h3>Password changed</h3><p class="sub">You're signed in with your new password.</p></div>`);
+  });
+  if (f.id === "alForm") return busy("#al-err", async () => {
+    const row = { from_town: v("al-from"), to_town: v("al-to") };
+    if (row.from_town === row.to_town) throw new Error("Pick two different towns.");
+    const { error } = await db.from("route_alerts").insert(row); if (error) throw error;
+    showErr("#al-err", ""); await loadAlerts();
   });
   if (f.id === "bkForm") return busy("#bk-err", async () => {
     let acc = v("bk-acc").replace(/[\s]/g, "");

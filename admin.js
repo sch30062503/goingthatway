@@ -1,7 +1,7 @@
 // Going That Way: admin page. Sign in with the email + password created in Supabase.
 const db = makeClient();
 const cfg = window.GTW_CONFIG || {};
-let tab = "pay", data = { jobs: [], trips: [], biz: [], profiles: [], reports: [] };
+let tab = "pay", data = { jobs: [], trips: [], biz: [], profiles: [], reports: [], oldPhotos: [] };
 
 const T = {
   payReminder: j => `Hi ${j.sender_name}, it's Going That Way. Your job (${j.item}, ${j.from_town} to ${j.to_town}, by ${fmtDate(j.window_end)}) goes live once it's paid: $${Math.round(j.price_estimate || 0)} to ${cfg.BANK_NAME || "Going That Way"} ${cfg.BANK_ACCOUNT || "(account)"}, reference ${jobRef(j)}. We hold it until it's delivered.`,
@@ -94,16 +94,17 @@ function mountAdminTs() {
   adminTs = window.turnstile.render(el, { sitekey: cfg.TURNSTILE_SITE_KEY, theme: "auto" });
 }
 async function load() {
-  const [j, t, b, p, rp] = await Promise.all([
+  const [j, t, b, p, rp, op] = await Promise.all([
     db.from("jobs").select("*").order("created_at", { ascending: false }),
     db.from("trips").select("*").order("trip_date"),
     db.from("business_interest").select("*").order("created_at", { ascending: false }),
     db.from("profiles").select("*"),
     db.from("job_reports").select("*").order("created_at", { ascending: false }),
+    db.from("job_photos").select("id,path,created_at").lt("created_at", new Date(Date.now() - 365 * 864e5).toISOString()),
   ]);
   const err = j.error || t.error || b.error || p.error;
   if (err) { $("#view").innerHTML = `<div class="err">Couldn't load data: ${esc(err.message)}. Have you run the latest database update?</div>`; return; }
-  data = { jobs: j.data, trips: t.data, biz: b.data, profiles: p.data, reports: rp.error ? [] : rp.data };
+  data = { jobs: j.data, trips: t.data, biz: b.data, profiles: p.data, reports: rp.error ? [] : rp.data, oldPhotos: op.error ? [] : op.data };
   render();
 }
 
@@ -129,6 +130,7 @@ function jobCard(j) {
       ${t ? `<dt>Driver</dt><dd>${esc(t.driver_name)} · ${phoneLink(t.driver_phone)} · ${fmtDate(t.trip_date)} · <a href="${esc(mapWithJob(j, t))}" target="_blank" rel="noopener">route with job</a></dd>` : ""}
       ${j.collected_at ? `<dt>Collected</dt><dd>${new Date(j.collected_at).toLocaleString("en-NZ")}</dd>` : ""}
       ${j.delivered_at ? `<dt>Delivered</dt><dd>${new Date(j.delivered_at).toLocaleString("en-NZ")}</dd>` : ""}
+      ${j.rating ? `<dt>Buyer</dt><dd>${j.rating > 0 ? "Thumbs up" : `<b style="color:var(--warn)">Thumbs down</b>`}${j.rating_note ? `: "${esc(j.rating_note)}"` : ""}</dd>` : ""}
     </dl>
     <div class="acts">
       ${j.status === "new" && j.payment === "unpaid" ? `<button class="btn small go" data-golive="${j.id}"${profileOf(j.user_id).id_status === "verified" ? "" : ` disabled title="Verify the sender's ID first"`}>Payment received: go live</button>${profileOf(j.user_id).id_status === "verified" ? "" : `<span class="fine">Verify the sender's ID first (ID checks).</span>`}${btnCopy("Copy payment reminder", T.payReminder(j))}` : ""}
@@ -158,6 +160,19 @@ function reportCard(r) {
     ${j.id ? `<div data-photos="${j.id}"></div>` : ""}
     ${r.status === "open" ? `<div class="acts"><input id="rn-${r.id}" placeholder="What you did (the reporter sees this)" style="width:auto;flex:1;min-width:200px;font-size:14px;padding:6px 8px"><button class="btn small go" data-resolve="${r.id}">Mark sorted</button></div>` : ""}
   </div>`;
+}
+function approvedDriverCard(p) {
+  const soon = todayISO(14), now = todayISO();
+  const flag = d => !d ? `<span class="chip warn">No date</span>` : d < now ? `<span class="chip warn">Expired</span>` : d <= soon ? `<span class="chip y">Due soon</span>` : "";
+  return `<div class="card"><div class="row"><span class="item">${esc(p.name || "")}</span><span class="chip g">Approved</span></div>
+    <dl class="kv"><dt>Mobile</dt><dd>${phoneLink(p.phone)}</dd><dt>Vehicle</dt><dd><b class="num">${esc(p.vehicle_plate || "")}</b> · ${esc(p.vehicle_make || "")} · ${esc(SPACE_LABEL[p.vehicle_space] || "")}
+      · <a href="https://transact.nzta.govt.nz/transactions/CheckExpiry/entry" target="_blank" rel="noopener">check on NZTA</a></dd>
+      <dt>WoF</dt><dd>${p.wof_expiry ? fmtDate(p.wof_expiry) : "–"} ${flag(p.wof_expiry)}</dd><dt>Rego</dt><dd>${p.rego_expiry ? fmtDate(p.rego_expiry) : "–"} ${flag(p.rego_expiry)}</dd></dl>
+    <div class="fields" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label for="wof-${p.id}">New WoF expiry</label><input id="wof-${p.id}" type="date" value="${esc(p.wof_expiry || "")}"></div>
+      <div class="field"><label for="rego-${p.id}">New rego expiry</label><input id="rego-${p.id}" type="date" value="${esc(p.rego_expiry || "")}"></div>
+    </div>
+    <div class="acts"><button class="btn small go" data-redate="${p.id}">Update dates</button></div></div>`;
 }
 function urgentCard(j) {
   const today = todayISO(), trips = data.trips.filter(t => t.trip_date === today && t.status === "open");
@@ -210,6 +225,14 @@ function payouts() {
     <textarea class="tmpl" hidden aria-label="Text to copy"></textarea></div>`; }).join("");
 }
 
+async function cleanOldPhotos() {
+  const rows = data.oldPhotos;
+  for (let i = 0; i < rows.length; i += 100) {
+    const batch = rows.slice(i, i + 100);
+    const { error } = await db.storage.from("job-photos").remove(batch.map(r => r.path)); if (error) throw error;
+    const { error: e2 } = await db.from("job_photos").delete().in("id", batch.map(r => r.id)); if (e2) throw e2;
+  }
+}
 // ---------- Accounts: monthly summary and spreadsheet downloads ----------
 let acctMonth = todayISO().slice(0, 7);
 const RECEIVED = ["paid", "refunded", "part_refunded"];
@@ -236,6 +259,10 @@ function accounts() {
     </div>
     <p class="fine">Jobs are counted in the month they were posted. "Kept by us" is what we received, less refunds and the drivers' share (including any bonus we added). It's before costs. If you register for GST, check with your accountant how it applies to the fee and the drivers' share.</p>
     <div class="acts"><button class="btn small go" id="csv-jobs">Download jobs spreadsheet</button><button class="btn small" id="csv-payouts">Download driver payouts</button></div>
+  </div>
+  <div class="card"><h3>Old photos</h3>
+    <p class="sub">The privacy policy says we keep job photos only while they're useful. Photos over 12 months old can be deleted.</p>
+    ${data.oldPhotos.length ? `<p class="sub"><b>${data.oldPhotos.length}</b> photo${data.oldPhotos.length === 1 ? " is" : "s are"} over 12 months old.</p><div class="acts"><button class="btn small" id="cleanPhotos">Delete ${data.oldPhotos.length} old photo${data.oldPhotos.length === 1 ? "" : "s"}</button></div>` : `<p class="fine">None to delete.</p>`}
   </div>`;
 }
 function csvDownload(name, rows) {
@@ -273,7 +300,9 @@ function render() {
     problems: (probs.map(reportCard).join("") || `<div class="empty">No open problems.</div>`) + (data.reports.some(r => r.status === "resolved") ? `<div class="label" style="margin-top:12px">Sorted</div>` + data.reports.filter(r => r.status === "resolved").slice(0, 20).map(reportCard).join("") : ""),
     pay: toPay.map(jobCard).join("") || `<div class="empty">No payments to check.</div>`,
     ids: idChecks.map(idCheckCard).join("") || `<div class="empty">No IDs waiting to be checked.</div>`,
-    drivers: drChecks.map(driverCheckCard).join("") || `<div class="empty">No drivers waiting to be checked.</div>`,
+    drivers: (drChecks.map(driverCheckCard).join("") || `<div class="empty">No drivers waiting to be checked.</div>`)
+      + (() => { const ap = data.profiles.filter(p => p.driver_status === "verified").sort((a, b) => String([a.wof_expiry, a.rego_expiry].sort()[0]).localeCompare(String([b.wof_expiry, b.rego_expiry].sort()[0])));
+        return ap.length ? `<div class="label" style="margin-top:14px">Approved drivers (soonest WoF or rego first)</div>` + ap.map(approvedDriverCard).join("") : ""; })(),
     live: live.map(jobCard).join("") || `<div class="empty">No live jobs.</div>`,
     trips: upcoming.map(tripCard).join("") || `<div class="empty">No upcoming trips.</div>`,
     payouts: payouts(),
@@ -321,6 +350,9 @@ document.addEventListener("click", async e => {
     const { error } = await db.rpc("admin_review_driver", { p_user: uid, p_ok: false, p_wof: null, p_rego: null, p_note: note }); if (error) throw error; await deleteDocs(uid); });
   const vf = e.target.closest("[data-verify]");
   if (vf) { const { error } = await db.rpc("admin_verify_driver", { p_user: vf.dataset.verify, p_ok: true }); if (error) return alertBox(error.message); return load(); }
+  const rd = e.target.closest("[data-redate]");
+  if (rd) return busyBtn(rd, async () => { const uid = rd.dataset.redate; const { error } = await db.rpc("admin_review_driver", { p_user: uid, p_ok: true, p_wof: $("#wof-" + uid)?.value || null, p_rego: $("#rego-" + uid)?.value || null, p_note: null }); if (error) throw error; });
+  if (e.target.closest("#cleanPhotos")) { const b2 = e.target.closest("#cleanPhotos"); return busyBtn(b2, cleanOldPhotos); }
   const rs = e.target.closest("[data-resolve]");
   if (rs) return busyBtn(rs, async () => { const id = rs.dataset.resolve; const { error } = await db.from("job_reports").update({ status: "resolved", admin_note: ($("#rn-" + id)?.value || "").trim() || null, resolved_at: new Date().toISOString() }).eq("id", id); if (error) throw error; });
   const bn = e.target.closest("[data-bonus]");

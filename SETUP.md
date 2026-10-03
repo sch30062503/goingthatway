@@ -8,7 +8,7 @@ About 20 minutes. Everything here is free.
    - Name: `goingthatway`
    - Region: **Sydney** (closest to NZ)
    - Save the database password somewhere safe. You won't need to give it to anyone.
-2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `013_payouts.sql`, so a new project only needs `schema.sql`.)
+2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `014_alerts_ratings.sql`, so a new project only needs `schema.sql`.)
 3. Go to **Authentication** → **Sign In / Providers**:
    - Turn **off** **Allow anonymous sign-ins**. Everyone now makes an account.
    - Under **Email**, turn **off** **Confirm email** for the trial. Supabase's free email only reaches your own team, so confirmation emails wouldn't arrive. Everyone is ID-checked by you instead.
@@ -67,6 +67,10 @@ About 20 minutes. Everything here is free.
 **Payouts and accounts:** drivers add their bank account under My account → Your earnings. Payouts shows each driver's total with their account number to copy; pay it, then tap **Paid: mark all paid**. The **Accounts** tab shows each month's totals and downloads a jobs spreadsheet and a driver-payouts spreadsheet for your accountant.
 
 **"I'm human" check:** once `TURNSTILE_SITE_KEY` is in config.js and CAPTCHA is on in Supabase (Authentication → Attack Protection, provider Turnstile, with the secret key), sign-up, sign-in and password resets need the check.
+
+**Every morning (8 am):** drivers get reminder emails 14 and 3 days before their WoF or rego runs out, and on the day. When one replies with a new date, update it under Driver checks → Approved drivers. On Mondays you get a phone alert if any job photos are over 12 months old; delete them from the Accounts tab.
+
+**Ratings:** buyers give a thumbs up or down after delivery. A thumbs down sends you a phone alert, and shows on the job in admin.
 
 **If something goes wrong**
 - No driver by the deliver-by day: copy the "no driver yet" text and offer more days, meeting on the route, or a full refund.
