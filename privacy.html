@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Privacy · Going That Way</title>
+<meta name="theme-color" content="#1F6B45">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="style.css?v=16">
+</head>
+<body>
+<header class="hero top"><div class="hero-in">
+  <div class="brand"><h1><a href="./" style="color:inherit;text-decoration:none">Going That Way</a></h1><a class="pill" href="./" style="text-decoration:none">Back to the app</a></div>
+</div></header>
+<div class="app"><main class="legal">
+<div class="note"><b>Draft for the trial.</b> These pages are being reviewed by a lawyer and may change. Last updated 3 October 2026.</div>
+
+<h2>Privacy policy</h2>
+<p class="sub">What we collect, why, who sees it, and your rights under the Privacy Act 2020.</p>
+
+<h3>What we collect</h3>
+<ul class="plainlist">
+<li><b>Your account:</b> name, email, mobile number and home address.</li>
+<li><b>Your ID check:</b> a photo of your ID and a selfie, plus the type of ID and whether it was verified.</li>
+<li><b>If you drive:</b> your licence class, vehicle plate, make and model, and WoF and rego expiry dates.</li>
+<li><b>Your jobs and trips:</b> pickup and delivery addresses, the seller's name and mobile (which buyers give us), item details, dates, and messages or notes you add.</li>
+<li><b>Photos taken during a job:</b> at pickup, at drop-off, "check it first" photos, and any photos sent with a problem report.</li>
+<li><b>Payments:</b> amounts, references and whether a job has been paid out.</li>
+</ul>
+
+<h3>Why we collect it</h3>
+<p>To check who everyone is, so the service is safe and can't easily be used to move anything illegal. Also to arrange and complete jobs, take payments and pay drivers, sort out problems, and meet our legal and tax obligations.</p>
+
+<h3>Who sees what</h3>
+<ul class="plainlist">
+<li>The public board never shows names, phone numbers or addresses. It only shows the item, towns, dates and price.</li>
+<li>When a driver takes your job, they see the addresses and contact details needed to do it, and you see the driver's name and mobile.</li>
+<li>Your ID photo and selfie are seen only by the Going That Way admin. <b>They're deleted as soon as the check is done</b>, and we keep only a record that you were verified.</li>
+<li>The admin can see all accounts and jobs, to run the service and sort out problems.</li>
+<li>We don't sell your information, and we don't share it with anyone else unless the law requires it, for example a request from the police.</li>
+</ul>
+
+<h3>Where it's kept</h3>
+<p>Accounts, jobs and photos are stored with our database provider, Supabase, in its Sydney, Australia region. The website itself is hosted by GitHub. Admin alerts are sent through a notification service (ntfy) and contain only a job reference, towns and a price, never names, phone numbers or addresses.</p>
+
+<h3>How long we keep it</h3>
+<p>ID photos are deleted once checked. Job and payment records are kept for seven years, because New Zealand businesses must keep financial records that long. Job photos are kept only as long as they're useful for sorting out problems.</p>
+
+<h3>Your rights</h3>
+<p>You can ask to see the personal information we hold about you, and ask us to correct it. You can update your name, mobile and address yourself under My account. To make a request, <span data-contact>use "Report a problem" on your job in the app</span>. If you're not happy with how we've handled your information, you can complain to the Privacy Commissioner at <a href="https://www.privacy.org.nz" target="_blank" rel="noopener">privacy.org.nz</a>.</p>
+
+<p class="fine" style="margin-top:24px"><a href="./">Back to Going That Way</a> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a></p>
+</main></div>
+<script src="config.js?v=16"></script>
+<script>
+// Fill in how to contact us from config.js
+(function () {
+  var c = window.GTW_CONFIG || {}, bits = [];
+  if (c.CONTACT_EMAIL) bits.push('email <a href="mailto:' + c.CONTACT_EMAIL + '">' + c.CONTACT_EMAIL + '</a>');
+  if (c.CONTACT_PHONE) bits.push('text or call ' + c.CONTACT_PHONE);
+  var how = bits.length ? bits.join(' or ') : 'use "Report a problem" on your job in the app';
+  document.querySelectorAll('[data-contact]').forEach(function (el) { el.innerHTML = how; });
+})();
+</script>
+</body>
+</html>

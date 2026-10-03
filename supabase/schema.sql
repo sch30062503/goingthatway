@@ -763,3 +763,224 @@ create view public.board_jobs as
   from public.jobs
   where status in ('open','matched','collected') and payment = 'paid' and window_end >= current_date;
 grant select on public.board_jobs to anon, authenticated;
+
+
+-- ===================== 009: report a problem; urgent same-day jobs =====================
+-- Going That Way: "Report a problem" on any job, and urgent same-day jobs with a driver bonus.
+-- Paste into Supabase SQL Editor -> New query -> Run. Safe to run more than once.
+
+-- =====================================================================
+-- Report a problem
+-- =====================================================================
+create table if not exists public.job_reports (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references public.jobs(id) on delete cascade,
+  reporter uuid not null default auth.uid(),
+  role text not null default 'sender',
+  kind text not null,
+  details text not null,
+  status text not null default 'open',
+  admin_note text,
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+alter table public.job_reports drop constraint if exists job_reports_role_check;
+alter table public.job_reports add constraint job_reports_role_check check (role in ('sender','driver','admin'));
+alter table public.job_reports drop constraint if exists job_reports_kind_check;
+alter table public.job_reports add constraint job_reports_kind_check check (kind in
+  ('damaged','late','not_turned_up','wrong_item','not_as_described','payment','safety','other'));
+alter table public.job_reports drop constraint if exists job_reports_status_check;
+alter table public.job_reports add constraint job_reports_status_check check (status in ('open','resolved'));
+alter table public.job_reports drop constraint if exists job_reports_details_check;
+alter table public.job_reports add constraint job_reports_details_check check (length(trim(details)) between 1 and 2000);
+
+-- Who's reporting is worked out here, not trusted from the app
+create or replace function public.guard_new_report() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  new.reporter := auth.uid();
+  new.role := case when exists (select 1 from public.jobs where id = new.job_id and user_id = auth.uid()) then 'sender'
+                   when public.is_job_driver(new.job_id) then 'driver' else 'admin' end;
+  new.status := 'open'; new.admin_note := null; new.resolved_at := null; new.created_at := now();
+  return new;
+end $$;
+drop trigger if exists job_reports_guard_new on public.job_reports;
+create trigger job_reports_guard_new before insert on public.job_reports for each row execute function public.guard_new_report();
+
+alter table public.job_reports enable row level security;
+drop policy if exists "people on the job report" on public.job_reports;
+create policy "people on the job report" on public.job_reports for insert to authenticated
+  with check (public.is_real_account() and public.can_see_job(job_id));
+drop policy if exists "read own reports or admin" on public.job_reports;
+create policy "read own reports or admin" on public.job_reports for select to authenticated
+  using (reporter = auth.uid() or public.is_admin());
+drop policy if exists "admin resolves reports" on public.job_reports;
+create policy "admin resolves reports" on public.job_reports for update to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+grant select, insert, update on public.job_reports to authenticated;
+
+-- Photos with a report: drivers can already add photos; let the sender add 'report' photos to their own job
+alter table public.job_photos drop constraint if exists job_photos_kind_check;
+alter table public.job_photos add constraint job_photos_kind_check check (kind in ('pickup','dropoff','no_show','check','report'));
+drop policy if exists "sender adds report photos" on public.job_photos;
+create policy "sender adds report photos" on public.job_photos for insert to authenticated
+  with check (uploaded_by = auth.uid() and kind = 'report' and path like job_id::text || '/%'
+              and exists (select 1 from public.jobs where id = job_id and user_id = auth.uid()));
+drop policy if exists "gtw sender uploads report photo" on storage.objects;
+create policy "gtw sender uploads report photo" on storage.objects for insert to authenticated
+  with check (bucket_id = 'job-photos' and (storage.foldername(name))[2] is null
+              and split_part(name, '/', 2) like 'report-%'
+              and exists (select 1 from public.jobs where id = public.safe_uuid((storage.foldername(name))[1]) and user_id = auth.uid()));
+
+-- =====================================================================
+-- Urgent same-day jobs
+-- =====================================================================
+alter table public.jobs add column if not exists urgent boolean not null default false;
+alter table public.jobs add column if not exists urgent_bonus int not null default 0;   -- paid by the sender, all to the driver
+alter table public.jobs add column if not exists admin_bonus int not null default 0;    -- extra the admin adds to find a driver
+alter table public.jobs drop constraint if exists jobs_urgent_bonus_check;
+alter table public.jobs add constraint jobs_urgent_bonus_check check (urgent_bonus in (0,15,30,50));
+alter table public.jobs drop constraint if exists jobs_admin_bonus_check;
+alter table public.jobs add constraint jobs_admin_bonus_check check (admin_bonus between 0 and 500);
+
+create or replace function public.guard_new_job() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    if not public.is_real_account() then raise exception 'Please create an account to post'; end if;
+    if coalesce((select id_status from public.profiles where id = auth.uid()), 'none') not in ('pending','verified') then
+      raise exception 'Please verify your ID before posting'; end if;
+    new.status := 'new'; new.payment := 'unpaid'; new.driver_paid := false;
+    new.matched_trip := null; new.collected_at := null; new.delivered_at := null; new.admin_note := null;
+    new.check_status := null; new.check_note := null; new.checked_at := null;
+    new.admin_bonus := 0;
+  end if;
+  if new.kind <> 'pickup' then new.check_first := false; end if;
+  if not new.urgent then new.urgent_bonus := 0; end if;
+  if new.window_end is null then new.window_end := new.job_date; end if;
+  if new.urgent then new.window_end := new.job_date; end if;   -- urgent means that day
+  if new.window_end < new.job_date then raise exception 'The deliver-by day is before the start day'; end if;
+  return new;
+end $$;
+
+create or replace function public.guard_job_admin_fields() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() and coalesce(current_setting('gtw.rpc', true), '') <> '1' and (
+       new.payment is distinct from old.payment
+    or new.driver_paid is distinct from old.driver_paid
+    or new.price_estimate is distinct from old.price_estimate
+    or new.matched_trip is distinct from old.matched_trip
+    or new.collected_at is distinct from old.collected_at
+    or new.delivered_at is distinct from old.delivered_at
+    or new.check_first is distinct from old.check_first
+    or new.check_status is distinct from old.check_status
+    or new.urgent is distinct from old.urgent
+    or new.urgent_bonus is distinct from old.urgent_bonus
+    or new.admin_bonus is distinct from old.admin_bonus) then
+    raise exception 'Only the admin can change payment or matching details';
+  end if;
+  return new;
+end $$;
+
+-- Public board: add urgency (still no addresses or contacts)
+drop view if exists public.board_jobs;
+create view public.board_jobs as
+  select id, kind, item, item_type, from_town, to_town, size, heavy, job_date, window_end, deadline_time, handover,
+         pickup_mode, pickup_hours, check_first, urgent, urgent_bonus, admin_bonus, price_estimate, status, created_at
+  from public.jobs
+  where status in ('open','matched','collected') and payment = 'paid' and window_end >= current_date;
+grant select on public.board_jobs to anon, authenticated;
+
+
+-- ===================== 010: phone alerts for the admin (ntfy) =====================
+-- Going That Way: free push alerts to the admin's phone (ntfy app) when something needs attention.
+-- Alerts never include names, phone numbers or addresses: just the job reference, towns and price.
+-- Paste into Supabase SQL Editor -> New query -> Run. Safe to run more than once.
+-- The last line shows your private alert channel name. Subscribe to it in the ntfy app.
+
+create extension if not exists pg_net;
+
+-- Admin-only settings (the alert channel name lives here, not in the public code)
+create table if not exists public.app_settings (key text primary key, value text not null);
+alter table public.app_settings enable row level security;
+drop policy if exists "admin settings" on public.app_settings;
+create policy "admin settings" on public.app_settings for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+insert into public.app_settings (key, value)
+  values ('ntfy_topic', 'gtw-' || substr(md5(random()::text || clock_timestamp()::text), 1, 20))
+  on conflict (key) do nothing;
+
+-- Send one alert. Never blocks or breaks the action that triggered it.
+create or replace function public.notify_admin(p_title text, p_message text, p_priority int default 3)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_topic text;
+begin
+  select value into v_topic from public.app_settings where key = 'ntfy_topic';
+  if v_topic is null then return; end if;
+  begin
+    perform net.http_post(
+      url := 'https://ntfy.sh/',
+      body := jsonb_build_object('topic', v_topic, 'title', p_title, 'message', p_message, 'priority', p_priority),
+      headers := jsonb_build_object('Content-Type', 'application/json'));
+  exception when others then null;
+  end;
+end $$;
+revoke execute on function public.notify_admin(text, text, int) from public, anon, authenticated;
+
+create or replace function public.gtw_ref(p_id uuid) returns text language sql immutable as $$
+  select 'GTW-' || upper(substr(replace(p_id::text, '-', ''), 1, 6)) $$;
+
+-- New job posted (needs a payment check); urgent ones are flagged high priority
+create or replace function public.alert_new_job() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.notify_admin(
+    case when new.urgent then 'URGENT job today' else 'New job to check' end,
+    public.gtw_ref(new.id) || ': ' || new.from_town || ' to ' || new.to_town || ', $' || round(coalesce(new.price_estimate, 0))
+      || case when new.urgent then '. Wants delivery today. Check the payment and the Urgent tab.' else '. Check the payment in admin.' end,
+    case when new.urgent then 5 else 3 end);
+  return new;
+end $$;
+drop trigger if exists jobs_alert_new on public.jobs;
+create trigger jobs_alert_new after insert on public.jobs for each row execute function public.alert_new_job();
+
+-- Buyer said no after the check photos (a refund to sort out)
+create or replace function public.alert_job_change() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'declined' and old.status is distinct from 'declined' then
+    perform public.notify_admin('Buyer said no', public.gtw_ref(new.id) || ': not collected after the check photos. Sort the refund in admin.', 4);
+  end if;
+  return new;
+end $$;
+drop trigger if exists jobs_alert_change on public.jobs;
+create trigger jobs_alert_change after update on public.jobs for each row execute function public.alert_job_change();
+
+-- A problem reported
+create or replace function public.alert_new_report() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.notify_admin('Problem reported', public.gtw_ref(new.job_id) || ': ' || replace(new.kind, '_', ' ') || ' (from the ' || new.role || '). See Problems in admin.', 4);
+  return new;
+end $$;
+drop trigger if exists job_reports_alert_new on public.job_reports;
+create trigger job_reports_alert_new after insert on public.job_reports for each row execute function public.alert_new_report();
+
+-- ID or driver check waiting
+create or replace function public.alert_checks() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.id_status = 'pending' and old.id_status is distinct from 'pending' then
+    perform public.notify_admin('ID check waiting', 'Someone has sent their ID and selfie. See ID checks in admin.', 3);
+  end if;
+  if new.driver_status = 'pending' and old.driver_status is distinct from 'pending' then
+    perform public.notify_admin('Driver check waiting', 'Someone has applied to drive. See Driver checks in admin.', 3);
+  end if;
+  return new;
+end $$;
+drop trigger if exists profiles_alert_checks on public.profiles;
+create trigger profiles_alert_checks after update on public.profiles for each row execute function public.alert_checks();
+
+-- Your private alert channel: subscribe to this name in the ntfy app
+select value as your_ntfy_channel from public.app_settings where key = 'ntfy_topic';

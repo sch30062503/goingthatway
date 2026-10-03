@@ -1,12 +1,15 @@
 // Going That Way: admin page. Sign in with the email + password created in Supabase.
 const db = makeClient();
 const cfg = window.GTW_CONFIG || {};
-let tab = "pay", data = { jobs: [], trips: [], biz: [], profiles: [] };
+let tab = "pay", data = { jobs: [], trips: [], biz: [], profiles: [], reports: [] };
 
 const T = {
   payReminder: j => `Hi ${j.sender_name}, it's Going That Way. Your job (${j.item}, ${j.from_town} to ${j.to_town}, by ${fmtDate(j.window_end)}) goes live once it's paid: $${Math.round(j.price_estimate || 0)} to ${cfg.BANK_NAME || "Going That Way"} ${cfg.BANK_ACCOUNT || "(account)"}, reference ${jobRef(j)}. We hold it until it's delivered.`,
   paidLive: j => `Thanks ${j.sender_name}, payment received for your ${j.item} (${jobRef(j)}). It's now on the board for drivers heading ${j.from_town} to ${j.to_town}. The driver will text you before pickup.`,
   driverWelcome: t => `Hi ${t.driver_name}, thanks for signing up to drive with Going That Way. Before your first job, please reply with a photo of your driver licence and your number plate. Once checked, your trips go live instantly and you can take jobs yourself.`,
+  urgentAsk: (j, t) => `Hi ${(t.driver_name || "").split(" ")[0]}, it's Going That Way. Urgent job today: ${j.item}, ${j.from_town} to ${j.to_town}. It pays you $${driverPay(j)} and it's already paid for. Can you fit it in? Reply YES and I'll send the details.`,
+  regularAsk: (j, p) => `Hi ${(p.name || "").split(" ")[0]}, it's Going That Way. Are you heading ${j.from_town} to ${j.to_town} today? Urgent job: ${j.item}, pays you $${driverPay(j)}. Reply YES if you can take it.`,
+  urgentNoDriver: j => `Hi ${j.sender_name}, it's Going That Way about your urgent ${j.item} (${jobRef(j)}). We're still ringing around drivers heading that way today. We'll text you by 2 pm either way, and if we can't find anyone you get a full refund.`,
   noDriver: j => `Hi ${j.sender_name}, no driver has taken your ${j.item} yet (${jobRef(j)}). You can: 1) give it more days, 2) meet the driver on the route (cheaper, more drivers say yes), or 3) cancel for a full refund. Just reply 1, 2 or 3.`,
 };
 async function copy(text, btn) {
@@ -69,7 +72,8 @@ function driverCheckCard(p) {
       <button class="btn small" data-drno="${p.id}">Can't approve</button></div>
   </div>`;
 }
-const expectedPrice = j => estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (j.job_date === j.window_end ? "express" : null), cover: 500, check: j.check_first })?.total;
+const expectedPrice = j => estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (j.job_date === j.window_end ? "express" : null), cover: 500, check: j.check_first, bonus: j.urgent_bonus })?.total;
+const openReports = jobId => data.reports.filter(r => r.job_id === jobId && r.status === "open");
 const DRIVER_OWED = ["delivered", "no_show", "declined"];
 const CHECK_LABEL = { waiting: "photos sent, waiting for the buyer", approved: "buyer said yes", declined: "buyer said no" };
 
@@ -83,15 +87,16 @@ function loginView(msg = "") {
     </div>${msg ? `<div class="err">${esc(msg)}</div>` : ""}<button class="btn go" type="submit">Sign in</button></form></div></section>`;
 }
 async function load() {
-  const [j, t, b, p] = await Promise.all([
+  const [j, t, b, p, rp] = await Promise.all([
     db.from("jobs").select("*").order("created_at", { ascending: false }),
     db.from("trips").select("*").order("trip_date"),
     db.from("business_interest").select("*").order("created_at", { ascending: false }),
     db.from("profiles").select("*"),
+    db.from("job_reports").select("*").order("created_at", { ascending: false }),
   ]);
   const err = j.error || t.error || b.error || p.error;
   if (err) { $("#view").innerHTML = `<div class="err">Couldn't load data: ${esc(err.message)}. Have you run the latest database update?</div>`; return; }
-  data = { jobs: j.data, trips: t.data, biz: b.data, profiles: p.data };
+  data = { jobs: j.data, trips: t.data, biz: b.data, profiles: p.data, reports: rp.error ? [] : rp.data };
   render();
 }
 
@@ -101,9 +106,9 @@ function jobCard(j) {
   const statusSel = `<select data-status="jobs:${j.id}" style="width:auto;font-size:14px;padding:5px 8px">${["new", "open", "matched", "collected", "delivered", "cancelled", "no_show", "declined"].map(o => `<option${o === j.status ? " selected" : ""}>${o}</option>`).join("")}</select>`;
   const paySel = `<select data-pay="${j.id}" style="width:auto;padding:2px 6px;font-size:13px">${["unpaid", "paid", "refunded", "part_refunded"].map(o => `<option${o === j.payment ? " selected" : ""}>${o}</option>`).join("")}</select>`;
   return `<div class="card">
-    <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span></div>${statusSel}</div>
+    <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span>${j.urgent ? ` <span class="chip warn">Urgent today</span>` : ""}${openReports(j.id).length ? ` <span class="chip warn">Problem reported</span>` : ""}</div>${statusSel}</div>
     <dl class="kv">
-      <dt>Ref / price</dt><dd class="num"><b>${jobRef(j)}</b> · $${Math.round(j.price_estimate || 0)} all in · driver $${driverFromPrice(j.price_estimate)}${priceOk ? "" : ` · <span style="color:var(--warn)">check price: expected $${exp}</span>`}</dd>
+      <dt>Ref / price</dt><dd class="num"><b>${jobRef(j)}</b> · $${Math.round(j.price_estimate || 0)} all in · driver $${driverPay(j)}${(j.urgent_bonus || j.admin_bonus) ? ` (incl. $${(j.urgent_bonus || 0) + (j.admin_bonus || 0)} bonus${j.admin_bonus ? `, $${j.admin_bonus} from us` : ""})` : ""}${priceOk ? "" : ` · <span style="color:var(--warn)">check price: expected $${exp}</span>`}</dd>
       <dt>Route</dt><dd>${esc(j.from_town)} → ${esc(j.to_town)} · ${fmtDate(j.job_date)} to ${fmtDate(j.window_end)}${j.deadline_time ? ", by " + fmtTime(j.deadline_time) : ""}</dd>
       <dt>Sender</dt><dd>${esc(j.sender_name)} · ${phoneLink(j.sender_phone)} ${idChip(profileOf(j.user_id).id_status)}</dd>
       ${j.seller_name || j.seller_phone ? `<dt>Seller</dt><dd>${esc(j.seller_name || "")} · ${phoneLink(j.seller_phone)}</dd>` : ""}
@@ -124,10 +129,43 @@ function jobCard(j) {
       ${DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) ? `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-dpaid="${j.id}"${j.driver_paid ? " checked" : ""} style="width:auto"> Driver paid</label>` : ""}
     </div>
     ${["matched", "collected", "delivered", "no_show", "declined"].includes(j.status) ? `<div data-photos="${j.id}"></div>` : ""}
-    ${j.status === "declined" ? `<p class="fine">Buyer said no after the check photos, so it wasn't collected. Refund the buyer their payment minus the driver's pay ($${driverFromPrice(j.price_estimate)}), then set payment to part_refunded. The driver's pay goes in the payout.</p>` : ""}
-    ${j.status === "no_show" ? `<p class="fine">No-show: refund the sender their payment minus the driver's pay ($${driverFromPrice(j.price_estimate)}), then set payment to part_refunded. The driver's pay goes in the payout.</p>` : ""}
+    ${j.status === "declined" ? `<p class="fine">Buyer said no after the check photos, so it wasn't collected. Refund the buyer their payment minus the driver's pay ($${driverPay(j)}), then set payment to part_refunded. The driver's pay goes in the payout.</p>` : ""}
+    ${j.status === "no_show" ? `<p class="fine">No-show: refund the sender their payment minus the driver's pay ($${driverPay(j)}), then set payment to part_refunded. The driver's pay goes in the payout.</p>` : ""}
     <textarea class="tmpl" hidden aria-label="Text to copy"></textarea>
   </div>`;
+}
+function reportCard(r) {
+  const j = data.jobs.find(x => x.id === r.job_id) || {}, who = profileOf(r.reporter), t = tripOf(j);
+  return `<div class="card"${r.status === "resolved" ? ' style="opacity:.75"' : ""}>
+    <div class="row"><span class="item">${esc(REPORT_KINDS[r.kind] || r.kind)}</span><span class="chip ${r.status === "open" ? "warn" : "g"}">${r.status === "open" ? "Open" : "Sorted"}</span></div>
+    <dl class="kv">
+      <dt>Job</dt><dd><b class="num">${j.id ? jobRef(j) : "?"}</b> · ${esc(j.item || "")} · ${esc(j.from_town || "")} → ${esc(j.to_town || "")} · ${esc(j.status || "")}</dd>
+      <dt>From</dt><dd>The ${esc(r.role)}: ${esc(who.name || "")} · ${phoneLink(who.phone)}</dd>
+      <dt>When</dt><dd>${new Date(r.created_at).toLocaleString("en-NZ")}</dd>
+      <dt>What happened</dt><dd style="white-space:pre-wrap">${esc(r.details)}</dd>
+      ${j.id ? `<dt>Sender</dt><dd>${esc(j.sender_name || "")} · ${phoneLink(j.sender_phone)}</dd>` : ""}
+      ${t ? `<dt>Driver</dt><dd>${esc(t.driver_name)} · ${phoneLink(t.driver_phone)}</dd>` : ""}
+      ${r.admin_note ? `<dt>Your note</dt><dd>${esc(r.admin_note)}</dd>` : ""}
+    </dl>
+    ${j.id ? `<div data-photos="${j.id}"></div>` : ""}
+    ${r.status === "open" ? `<div class="acts"><input id="rn-${r.id}" placeholder="What you did (the reporter sees this)" style="width:auto;flex:1;min-width:200px;font-size:14px;padding:6px 8px"><button class="btn small go" data-resolve="${r.id}">Mark sorted</button></div>` : ""}
+  </div>`;
+}
+function urgentCard(j) {
+  const today = todayISO(), trips = data.trips.filter(t => t.trip_date === today && t.status === "open");
+  const on = trips.filter(t => jobFitsTrip(j, t)), near = trips.filter(t => !jobFitsTrip(j, t));
+  const tripRow = (t, fits) => `<div class="sugg"><span><b>${esc(t.driver_name)}</b> · ${esc(t.from_town)} → ${esc(t.to_town)}${t.depart_time ? ", leaving " + fmtTime(t.depart_time) : ""} · ${esc(SPACE_LABEL[t.space] || "")}${fits ? "" : ` · <i>not an exact fit: ask about a detour</i>`}</span>
+    <span class="acts"><a class="btn small" href="sms:${esc(String(t.driver_phone || "").replace(/\s/g, ""))}?&body=${encodeURIComponent(T.urgentAsk(j, t))}">Text</a>${phoneLink(t.driver_phone)}</span></div>`;
+  const regulars = data.profiles.filter(p => p.verified_driver && p.driver_status === "verified" && !trips.some(t => t.user_id === p.id) && (SPACE_FITS[p.vehicle_space] || []).includes(j.size));
+  return `${jobCard(j)}
+    <div class="card" style="margin-top:-6px;border-top:0">
+      <div class="label">Drivers out today on this route (${on.length})</div>${on.map(t => tripRow(t, true)).join("") || `<p class="fine">Nobody's posted a trip that covers this route today.</p>`}
+      ${near.length ? `<div class="label">Other drivers out today</div>${near.map(t => tripRow(t, false)).join("")}` : ""}
+      ${regulars.length ? `<div class="label">Approved drivers with room for it (no trip posted today)</div>${regulars.map(p => `<div class="sugg"><span><b>${esc(p.name || "")}</b> · ${esc(SPACE_LABEL[p.vehicle_space] || "")} ${esc(p.vehicle_make || "")}</span><span class="acts"><a class="btn small" href="sms:${esc(String(p.phone || "").replace(/\s/g, ""))}?&body=${encodeURIComponent(T.regularAsk(j, p))}">Text</a>${phoneLink(p.phone)}</span></div>`).join("")}` : ""}
+      <div class="acts" style="margin-top:6px"><button class="btn small" data-bonus="${j.id}:10">+$10 to the driver (from us)</button>${j.admin_bonus ? `<button class="btn small" data-bonus="${j.id}:-10">−$10</button>` : ""}${btnCopy("Copy 'still looking' text to sender", T.urgentNoDriver(j))}</div>
+      <p class="fine">The driver now gets $${driverPay(j)}. Bonuses you add come out of our side, so keep an eye on them.</p>
+      <textarea class="tmpl" hidden aria-label="Text to copy"></textarea>
+    </div>`;
 }
 function tripCard(t) {
   const jobs = data.jobs.filter(j => j.matched_trip === t.id);
@@ -152,11 +190,11 @@ const bizCard = b => `<div class="card"><span class="item">${esc(b.business_name
 function payouts() {
   const owed = data.jobs.filter(j => DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid && j.matched_trip);
   const by = {};
-  owed.forEach(j => { const t = tripOf(j); if (!t) return; (by[t.driver_phone] ||= { name: t.driver_name, phone: t.driver_phone, jobs: [], total: 0 }); by[t.driver_phone].jobs.push(j); by[t.driver_phone].total += driverFromPrice(j.price_estimate); });
+  owed.forEach(j => { const t = tripOf(j); if (!t) return; (by[t.driver_phone] ||= { name: t.driver_name, phone: t.driver_phone, jobs: [], total: 0 }); by[t.driver_phone].jobs.push(j); by[t.driver_phone].total += driverPay(j); });
   const list = Object.values(by);
   if (!list.length) return `<div class="empty">No driver payouts owed.</div>`;
   return list.map(d => `<div class="card"><div class="row"><span class="item">${esc(d.name)}</span><b class="num">$${d.total}</b></div>
-    <p class="sub">${phoneLink(d.phone)} · ${d.jobs.map(j => `${esc(j.item)} (${jobRef(j)}, $${driverFromPrice(j.price_estimate)})`).join(", ")}</p>
+    <p class="sub">${phoneLink(d.phone)} · ${d.jobs.map(j => `${esc(j.item)} (${jobRef(j)}, $${driverPay(j)})`).join(", ")}</p>
     <p class="fine">Pay by bank transfer, reference "GTW payout". Ask for their account number the first time.</p>
     <button class="btn small go" data-payall="${d.jobs.map(j => j.id).join(",")}">Mark all ${d.jobs.length} paid</button></div>`).join("");
 }
@@ -169,8 +207,12 @@ function render() {
   const live = J(["open", "matched", "collected"]);
   const upcoming = data.trips.filter(t => t.trip_date >= todayISO() && ["open", "new"].includes(t.status));
   const owed = data.jobs.filter(j => DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid).length;
-  const tabs = [["pay", "Payments to check", toPay.length], ["ids", "ID checks", idChecks.length], ["drivers", "Driver checks", drChecks.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0]];
+  const urgent = data.jobs.filter(j => j.urgent && ["new", "open"].includes(j.status) && j.window_end >= todayISO());
+  const probs = data.reports.filter(r => r.status === "open");
+  const tabs = [["urgent", "Urgent", urgent.length], ["problems", "Problems", probs.length], ["pay", "Payments to check", toPay.length], ["ids", "ID checks", idChecks.length], ["drivers", "Driver checks", drChecks.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0]];
   const body = {
+    urgent: urgent.map(urgentCard).join("") || `<div class="empty">No urgent jobs waiting.</div>`,
+    problems: (probs.map(reportCard).join("") || `<div class="empty">No open problems.</div>`) + (data.reports.some(r => r.status === "resolved") ? `<div class="label" style="margin-top:12px">Sorted</div>` + data.reports.filter(r => r.status === "resolved").slice(0, 20).map(reportCard).join("") : ""),
     pay: toPay.map(jobCard).join("") || `<div class="empty">No payments to check.</div>`,
     ids: idChecks.map(idCheckCard).join("") || `<div class="empty">No IDs waiting to be checked.</div>`,
     drivers: drChecks.map(driverCheckCard).join("") || `<div class="empty">No drivers waiting to be checked.</div>`,
@@ -218,6 +260,10 @@ document.addEventListener("click", async e => {
     const { error } = await db.rpc("admin_review_driver", { p_user: uid, p_ok: false, p_wof: null, p_rego: null, p_note: note }); if (error) throw error; await deleteDocs(uid); });
   const vf = e.target.closest("[data-verify]");
   if (vf) { const { error } = await db.rpc("admin_verify_driver", { p_user: vf.dataset.verify, p_ok: true }); if (error) return alertBox(error.message); return load(); }
+  const rs = e.target.closest("[data-resolve]");
+  if (rs) return busyBtn(rs, async () => { const id = rs.dataset.resolve; const { error } = await db.from("job_reports").update({ status: "resolved", admin_note: ($("#rn-" + id)?.value || "").trim() || null, resolved_at: new Date().toISOString() }).eq("id", id); if (error) throw error; });
+  const bn = e.target.closest("[data-bonus]");
+  if (bn) { const [id, d] = bn.dataset.bonus.split(":"); const j = data.jobs.find(x => x.id === id); return update("jobs", id, { admin_bonus: Math.max(0, (j?.admin_bonus || 0) + Number(d)) }); }
   const pa = e.target.closest("[data-payall]");
   if (pa) { for (const id of pa.dataset.payall.split(",")) { const { error } = await db.from("jobs").update({ driver_paid: true }).eq("id", id); if (error) return alertBox(error.message); } return load(); }
 });

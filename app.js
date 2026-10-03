@@ -89,6 +89,18 @@ function examplePrices() {
     <p class="fine">Delivered within the week, all in. Add <b>$${cc.total - c.total}</b> to have the driver check it and send you photos before collecting. Collecting it yourself from Christchurch means a ${2 * dist("Christchurch", "Timaru")} km round trip from Timaru, about 4 hours of driving.</p></div>`;
 }
 
+// "Report a problem" form, on the sender's and the driver's view of a job
+function reportForm(id, role) {
+  const kinds = role === "driver" ? ["not_turned_up", "not_as_described", "wrong_item", "damaged", "late", "payment", "safety", "other"] : ["damaged", "late", "not_turned_up", "wrong_item", "not_as_described", "payment", "safety", "other"];
+  return `<details class="more report"><summary>Report a problem</summary><div class="reportf" data-reportbox="${id}">
+    <div class="field"><label for="rk-${id}">What's wrong?</label><select id="rk-${id}">${kinds.map(k => `<option value="${k}">${REPORT_KINDS[k]}</option>`).join("")}</select></div>
+    <div class="field"><label for="rd-${id}">Tell us what happened</label><textarea id="rd-${id}" maxlength="2000" placeholder="What happened, and what would put it right?"></textarea></div>
+    <div class="field"><label for="rp-${id}">Photo <span class="hint">(optional)</span></label><input id="rp-${id}" type="file" accept="image/*"></div>
+    <button class="btn go" type="button" data-report="${id}">Send to Going That Way</button>
+    <p class="fine">Only the Going That Way admin sees this, and we'll get back to you. If anyone's in danger, call 111 first.</p></div></details>`;
+}
+const REPORT_STATUS = r => r.status === "resolved" ? `Sorted${r.admin_note ? ": " + esc(r.admin_note) : ""}` : "We're looking into it";
+
 // =====================================================================
 // SEND
 // =====================================================================
@@ -124,7 +136,10 @@ function send() {
         <div class="field full"><label for="j-type">What kind of thing is it?</label><select id="j-type">${Object.entries(ITEM_TYPES).map(([k, [lab]]) => `<option value="${k}"${k === (pickup ? "big_furniture" : "parts") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="field"><label for="j-size">Space it needs</label><select id="j-size">${Object.entries(SIZE_LABEL).map(([k, lab]) => `<option value="${k}"${k === (pickup ? "xl" : "medium") ? " selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="field"><label for="j-by">Deliver by</label><input id="j-by" type="date" min="${todayISO()}" value="${todayISO(6)}" required></div>
-        <p class="fine" style="grid-column:1/-1">The more days you allow, the more drivers can take it. Today only is express (+25%).</p>
+        <p class="fine" style="grid-column:1/-1" id="j-by-hint">The more days you allow, the more drivers can take it. Today only is express (+25%).</p>
+        <div class="field full urgentf"><label for="j-when">How soon?</label><select id="j-when"><option value="standard">By my deliver-by day</option><option value="urgent">Urgent: it has to get there today</option></select>
+          <div id="j-urg" hidden><label for="j-bonus" style="margin-top:8px;display:block">Urgency bonus, all of it to the driver</label><select id="j-bonus">${URGENT_BONUSES.map(b => `<option value="${b}"${b === 30 ? " selected" : ""}>+$${b}</option>`).join("")}</select>
+          <p class="fine" style="margin-top:6px">A bigger bonus gets drivers to take a longer detour or leave sooner. We'll also personally ring around drivers heading your way today. Pay straight away and text us, so we can put it live fast.</p></div></div>
         <div class="field full heavyf"><label class="check"><input type="checkbox" id="j-heavy"${pickup ? " checked" : ""}> <span><b>It's a two-person lift</b><br>Too heavy or awkward for one person to carry safely.</span></label>
           <label class="check" id="j-help-f" style="margin-top:8px"><input type="checkbox" id="j-help"> <span>${pickup ? "The seller will help the driver load it, and someone will be at my place to help unload." : "Someone will help the driver load it, and someone will help unload at the other end."}</span></label></div>
         <div class="field full"><label for="j-pm">How can the driver collect it?</label><select id="j-pm">${Object.entries(PICKUP_LABEL).map(([k, lab]) => `<option value="${k}">${lab}</option>`).join("")}</select></div>
@@ -141,7 +156,7 @@ function send() {
         <div class="field full"><label for="j-desc">Anything the driver should know?</label><textarea id="j-desc" placeholder="e.g. Seller will help load. Keep upright."></textarea></div>
       </div></details>
       <div id="j-price"></div>
-      <label class="check"><input type="checkbox" id="c-ok" required> <span>It's worth less than $500 and isn't dangerous goods, cash, drugs, weapons or a live animal. Someone at each end will help the driver load and unload anything heavy. I understand items aren't insured during the trial, and that if the driver arrives when I said and it isn't available, a no-show fee covering their trip is kept from my payment.</span></label>
+      <label class="check"><input type="checkbox" id="c-ok" required> <span>It's worth less than $500 and isn't dangerous goods, cash, drugs, weapons or a live animal. Someone at each end will help the driver load and unload anything heavy. I understand items aren't insured during the trial and are carried at owner's risk, and that if the driver arrives when I said and it isn't available, a no-show fee covering their trip is kept from my payment. <a href="terms.html" target="_blank">Full terms</a></span></label>
       <div id="j-err"></div>
       <button class="btn go" type="submit">Post and pay</button>
     </form></div>
@@ -150,9 +165,11 @@ function send() {
 }
 function jobValues() {
   const pm = v("j-pm") || "home";
-  const jobDate = v("j-from-d") || todayISO(), windowEnd = v("j-by");
+  const urgent = v("j-when") === "urgent";
+  const jobDate = urgent ? todayISO() : (v("j-from-d") || todayISO()), windowEnd = urgent ? todayISO() : v("j-by");
   return {
-    kind: sendMode, item: v("j-item"), item_type: v("j-type") || null, heavy: !!$("#j-heavy")?.checked, check_first: sendMode === "pickup" && !!$("#j-check")?.checked, listing_url: v("j-link") || null, from_town: v("j-from"), to_town: v("j-to"),
+    kind: sendMode, item: v("j-item"), item_type: v("j-type") || null, heavy: !!$("#j-heavy")?.checked,
+    urgent, urgent_bonus: urgent ? +v("j-bonus") : 0, check_first: sendMode === "pickup" && !!$("#j-check")?.checked, listing_url: v("j-link") || null, from_town: v("j-from"), to_town: v("j-to"),
     pickup_address: v("j-pa") || null, drop_address: v("j-da") || null, seller_name: v("j-sn") || null, seller_phone: v("j-sp") || null,
     size: v("j-size"), job_date: jobDate, window_end: windowEnd,
     deadline_time: v("j-dl") === "by" ? (v("j-dlt") || null) : null,
@@ -163,7 +180,7 @@ function jobValues() {
 }
 function jobPrice(j) {
   const express = isExpress(j.job_date, j.window_end);
-  return estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (express ? "express" : null), cover: 500, check: j.check_first });
+  return estimate({ from: j.from_town, to: j.to_town, size: j.size, handover: j.handover, deadline: j.deadline_time || (express ? "express" : null), cover: 500, check: j.check_first, bonus: j.urgent_bonus });
 }
 function updPickupMode() {
   const pm = v("j-pm"); if (!pm) return;
@@ -171,6 +188,11 @@ function updPickupMode() {
   hoursF.hidden = pm === "left_out"; notesF.hidden = !(pm === "left_out" || pm === "meet");
   $("#pm-hours-l").textContent = { home: "When is someone there?", business: "Opening hours", meet: "When can you meet?" }[pm] || "";
   $("#pm-notes-l").textContent = pm === "meet" ? "Where on the route? (e.g. Rakaia BP)" : "Where is it left?";
+}
+function updUrgent() {
+  const u = v("j-when") === "urgent", box = $("#j-urg"), by = $("#j-by"), fd = $("#j-from-d"); if (!box) return;
+  box.hidden = !u; by.disabled = u; if (fd) fd.disabled = u;
+  $("#j-by-hint").textContent = u ? "Urgent jobs are delivered today, so the deliver-by day is today." : "The more days you allow, the more drivers can take it. Today only is express (+25%).";
 }
 function updHeavy() { const h = $("#j-heavy"), f = $("#j-help-f"); if (h && f) f.hidden = !h.checked; }
 function updPrice() {
@@ -188,6 +210,7 @@ function updPrice() {
       ${P.handling ? `<div><span class="num">${r(P.handling)}</span><span>loading, strapping down and unloading a bulky item</span></div>` : ""}
       ${P.check ? `<div><span class="num">${r(P.check)}</span><span>checking it for you before collecting</span></div>` : ""}
       ${P.prem ? `<div><span class="num">${r(P.prem)}</span><span>${express ? "same-day express" : "set arrival time"}</span></div>` : ""}
+      ${P.bonus ? `<div><span class="num">${r(P.bonus)}</span><span>urgency bonus, all of it to the driver</span></div>` : ""}
       <div><span class="num">${r(P.fee)}</span><span>Going That Way's 15%. Everything else goes to the driver.</span></div></div></details>
     ${e.prem ? `<div class="note" style="margin-top:6px">Includes a $${e.prem} ${express ? "same-day express" : "set-time"} premium, paid to the driver. Delays like road closures, crashes or weather can still happen. If it arrives late, you only pay the normal rate ($${e.normal}).</div>` : ""}
     <div class="note" style="margin-top:6px"><b>Trial service: items aren't insured yet.</b> Please don't send anything worth more than $500.</div>`;
@@ -268,10 +291,11 @@ async function tripJobsPanel(t, verified) {
     db.from("board_jobs").select("*").eq("status", "open"),
   ]);
   const mine = (taken.data || []).filter(j => ["matched", "collected", "delivered", "declined"].includes(j.status));
-  const avail = (board.data || []).filter(j => jobFitsTrip(j, t));
+  const avail = (board.data || []).filter(j => jobFitsTrip(j, t)).sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0));
   const takenHtml = mine.map(j => takenJobCard(j, t)).join("");
-  const availHtml = avail.map(j => `<div class="card">
-      <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span></div><span class="chip g num">You get $${driverFromPrice(j.price_estimate)}</span></div>
+  const availHtml = avail.map(j => `<div class="card${j.urgent ? " urgent" : ""}">
+      ${j.urgent ? `<div class="urgentbar">Urgent: needed today · +$${(j.urgent_bonus || 0) + (j.admin_bonus || 0)} bonus included</div>` : ""}
+      <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span></div><span class="chip g num">You get $${driverPay(j)}</span></div>
       <div class="meta"><span>${esc(j.from_town)} → ${esc(j.to_town)}</span>${j.item_type ? `<span class="chip">${esc(itemTypeShort(j.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[j.size] || j.size)}</span>${j.heavy ? `<span class="chip y">2-person lift</span>` : ""}${j.check_first ? `<span class="chip y">Check first: photos for the buyer</span>` : ""}<span class="chip">${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? ": " + esc(j.pickup_hours) : ""}</span><span>by ${fmtDate(j.window_end)}${j.deadline_time ? ", " + fmtTime(j.deadline_time) : ""}</span></div>
       ${t.status === "open" && verified ? `<button class="btn go" data-claim="${j.id}:${t.id}">Take it</button>` : ""}
     </div>`).join("");
@@ -303,7 +327,7 @@ function takenJobCard(j, t) {
   else if (j.status === "declined") step = `<div class="note"><b>${esc(buyer)} said no, so leave it with the seller.</b> Let the seller know politely. You're still paid for this trip in the weekly payout.</div>`;
   else step = `<span class="chip g">Delivered. Thanks! Paid in the weekly payout.</span>`;
   return `<div class="card" style="border:2px solid var(--mark)">
-    <div class="row"><span class="item">${esc(j.item)}</span><span class="chip g num">You get $${driverFromPrice(j.price_estimate)}</span></div>
+    <div class="row"><span class="item">${esc(j.item)}</span><span class="chip g num">You get $${driverPay(j)}</span></div>
     ${j.item_type || j.check_first || j.heavy ? `<div class="meta">${j.item_type ? `<span class="chip">${esc(itemTypeShort(j.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[j.size] || "")}</span>${j.heavy ? `<span class="chip y">2-person lift</span>` : ""}${j.check_first ? `<span class="chip y">Check first</span>` : ""}</div>` : ""}
     <dl style="display:grid;grid-template-columns:92px 1fr;gap:3px 10px;font-size:13.5px;margin:0">
       <dt style="color:var(--ink3)">Collect</dt><dd style="margin:0">${esc(j.pickup_address)}, ${esc(j.from_town)}</dd>
@@ -320,6 +344,7 @@ function takenJobCard(j, t) {
     <p class="fine">Don't set off for the pickup until they've confirmed, unless it's left out. The photos confirm collection and delivery, and protect you if anything's questioned.</p>
     <div data-photos="${j.id}"></div>
     ${step}
+    ${reportForm(j.id, "driver")}
   </div>`;
 }
 
@@ -363,7 +388,7 @@ async function loadBoard() {
   const bj = $("#bj"), bt = $("#bt"); if (!bj) return;
   if (j.error || t.error) { bj.textContent = bt.textContent = "Couldn't load the board. Try again shortly."; return; }
   bj.className = bt.className = "";
-  bj.innerHTML = j.data.length ? j.data.map(r => `<div class="card" style="margin-bottom:8px"><div class="row"><div>${r.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(r.item)}</span></div><span class="chip g num">$${Math.round(r.price_estimate || 0)}</span></div>${plate(r.from_town, r.to_town)}<div class="meta"><span>by ${fmtDate(r.window_end)}</span>${r.item_type ? `<span class="chip">${esc(itemTypeShort(r.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[r.size] || r.size)}</span>${r.heavy ? `<span class="chip y">2-person lift</span>` : ""}<span class="chip">${esc(PICKUP_LABEL[r.pickup_mode] || "")}</span>${r.status !== "open" ? `<span class="chip y">Driver found</span>` : ""}</div></div>`).join("")
+  bj.innerHTML = j.data.length ? j.data.map(r => `<div class="card" style="margin-bottom:8px"><div class="row"><div>${r.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(r.item)}</span></div><span class="chip g num">$${Math.round(r.price_estimate || 0)}</span></div>${plate(r.from_town, r.to_town)}<div class="meta"><span>by ${fmtDate(r.window_end)}</span>${r.item_type ? `<span class="chip">${esc(itemTypeShort(r.item_type))}</span>` : ""}<span class="chip">${esc(SIZE_SHORT[r.size] || r.size)}</span>${r.heavy ? `<span class="chip y">2-person lift</span>` : ""}<span class="chip">${esc(PICKUP_LABEL[r.pickup_mode] || "")}</span>${r.urgent ? `<span class="chip warn">Urgent today</span>` : ""}${r.status !== "open" ? `<span class="chip y">Driver found</span>` : ""}</div></div>`).join("")
     : `<div class="empty">No paid jobs right now. Be the first: post a job.</div>`;
   bt.innerHTML = t.data.length ? t.data.map(r => `<div class="card" style="margin-bottom:8px">${plate(r.from_town, r.to_town)}<div class="meta"><span>${fmtDate(r.trip_date)}${r.depart_time ? ", leaving " + fmtTime(r.depart_time) : ""}</span><span class="chip">${esc(SPACE_LABEL[r.space] || r.space)}</span></div></div>`).join("")
     : `<div class="empty">No trips posted yet. Driving this week? Post your trip.</div>`;
@@ -391,7 +416,7 @@ function account() {
       <div class="field"><label for="su-phone">Mobile</label><input id="su-phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="021 123 4567"></div>
       <div class="field"><label for="su-addr">Home address</label><input id="su-addr" autocomplete="street-address" required></div>
     </div>
-    <label class="check"><input type="checkbox" id="su-ok" required> <span>I'm 18 or over. I understand Going That Way checks everyone's ID once: my ID photo and selfie are only seen by the Going That Way admin, used only to confirm who I am, and deleted once checked.</span></label>
+    <label class="check"><input type="checkbox" id="su-ok" required> <span>I'm 18 or over and I agree to the <a href="terms.html" target="_blank">terms</a> and <a href="privacy.html" target="_blank">privacy policy</a>. I understand Going That Way checks everyone's ID once: my ID photo and selfie are only seen by the Going That Way admin, used only to confirm who I am, and deleted once checked.</span></label>
     <div id="su-err"></div><button class="btn go" type="submit">Create account</button></form></div>
   </section>`;
   const P = me.profile || {}, idDone = ["pending", "verified"].includes(P.id_status), needLicence = !(P.id_type === "driver_licence" && idDone);
@@ -482,6 +507,8 @@ async function loadMine() {
       <div class="meta"><span>${fmtDate(r.trip_date)}${r.depart_time ? ", leaving " + fmtTime(r.depart_time) : ""}</span>${live ? `<button class="btn small" data-cancel="trips:${r.id}" style="margin-left:auto">Cancel trip</button>` : ""}</div>
       ${live ? `<div data-trippanel="${r.id}" class="empty">Loading jobs on your route…</div>` : ""}</div>`);
   }
+  const ids = (j.data || []).map(r => r.id), reps = {};
+  if (ids.length) { const { data: rr } = await db.from("job_reports").select("*").in("job_id", ids).order("created_at"); (rr || []).forEach(x => (reps[x.job_id] ||= []).push(x)); }
   const jobsSorted = [...(j.data || [])].sort((a, b) => (b.check_status === "waiting" && b.status === "matched") - (a.check_status === "waiting" && a.status === "matched"));
   for (const r of jobsSorted) {
     const [s, c] = JOB_STATUS[r.status] || [r.status, ""];
@@ -494,7 +521,9 @@ async function loadMine() {
       ${checkPanel(r)}
       ${r.status === "declined" ? `<p class="fine">It wasn't collected. We'll refund you everything except the driver's trip, usually within 2 working days.</p>` : ""}
       ${r.status === "new" && r.payment === "unpaid" ? payPanel(r) : ""}
-      ${["new", "open"].includes(r.status) && r.kind === "pickup" ? `<details class="more"><summary>Message for the seller</summary>${sellerPanel(r)}</details>` : ""}</div>`);
+      ${["new", "open"].includes(r.status) && r.kind === "pickup" ? `<details class="more"><summary>Message for the seller</summary>${sellerPanel(r)}</details>` : ""}
+      ${(reps[r.id] || []).map(x => `<div class="note">You reported: <b>${esc(REPORT_KINDS[x.kind] || x.kind)}</b> on ${new Date(x.created_at).toLocaleDateString("en-NZ")}. ${REPORT_STATUS(x)}</div>`).join("")}
+      ${r.status !== "cancelled" ? reportForm(r.id, "sender") : ""}</div>`);
   }
   box.className = "";
   box.innerHTML = parts.join("") || `<div class="empty">You haven't posted anything yet.</div>`;
@@ -541,7 +570,7 @@ const views = { send, drive, board, info, mine, business, account };
 function render() {
   $("#view").innerHTML = views[cur]();
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === cur));
-  updPickupMode(); updHeavy(); updPrice();
+  updPickupMode(); updHeavy(); updUrgent(); updPrice();
   if (cur === "drive") loadAgain();
 }
 function go(tab) { cur = tab; render(); window.scrollTo(0, 0); }
@@ -582,6 +611,20 @@ document.addEventListener("click", async e => {
     return loadMine();
   }
   const cp = e.target.closest("[data-copy]"); if (cp) return copyText(cp.dataset.copy, cp);
+  const rp = e.target.closest("[data-report]");
+  if (rp) {
+    const id = rp.dataset.report, box = rp.closest("[data-reportbox]"), details = ($("#rd-" + id)?.value || "").trim(), file = $("#rp-" + id)?.files?.[0];
+    box.querySelectorAll(".err").forEach(x => x.remove());
+    if (!details) return rp.insertAdjacentHTML("afterend", `<div class="err">Please tell us what happened.</div>`);
+    rp.disabled = true; rp.textContent = "Sending…";
+    try {
+      if (file) await uploadJobPhoto(db, id, "report", file);
+      const { error } = await db.from("job_reports").insert({ job_id: id, kind: $("#rk-" + id).value, details });
+      if (error) throw error;
+      box.innerHTML = `<div class="ok"><h3>Thanks, we've got it</h3><p class="sub">The Going That Way admin will look at it and get back to you, usually the same day.</p></div>`;
+    } catch (err) { console.error(err); rp.disabled = false; rp.textContent = "Send to Going That Way"; rp.insertAdjacentHTML("afterend", `<div class="err">${niceError(err)}</div>`); }
+    return;
+  }
   if (e.target.closest("#useHome")) { $("#j-da").value = me.profile?.address || ""; return; }
   const ag = e.target.closest("[data-again]"); if (ag) return postAgain(ag.dataset.again);
   const sw = e.target.closest("[data-showtrip]"); if (sw) { $("#tripForm").closest(".card").hidden = true; $("#t-again").innerHTML = ""; return refreshTripPanel(sw.dataset.showtrip); }
@@ -660,7 +703,7 @@ document.addEventListener("change", async e => {
 });
 document.addEventListener("change", e => {
   if (e.target.id === "j-type") { const t = ITEM_TYPES[e.target.value]; if (t) { $("#j-size").value = t[1]; $("#j-heavy").checked = t[2]; } }
-  if (e.target.closest("#jobForm")) updHeavy();
+  if (e.target.closest("#jobForm")) { updHeavy(); updUrgent(); }
   if (e.target.closest("#jobForm")) { updPickupMode(); updPrice(); }
 });
 // While someone's waiting on a check (driver for an answer, buyer for photos), look for news every 20 seconds

@@ -8,7 +8,7 @@ About 20 minutes. Everything here is free.
    - Name: `goingthatway`
    - Region: **Sydney** (closest to NZ)
    - Save the database password somewhere safe. You won't need to give it to anyone.
-2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `008_xl_heavy.sql`, so a new project only needs `schema.sql`.)
+2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `010_phone_alerts.sql`, so a new project only needs `schema.sql`.)
 3. Go to **Authentication** → **Sign In / Providers**:
    - Turn **off** **Allow anonymous sign-ins**. Everyone now makes an account.
    - Under **Email**, turn **off** **Confirm email** for the trial. Supabase's free email only reaches your own team, so confirmation emails wouldn't arrive. Everyone is ID-checked by you instead.
@@ -55,6 +55,12 @@ About 20 minutes. Everything here is free.
 2. **Driver checks:** check the licence (full or restricted, not expired, selfie matches). Check the make and model on CarJam, then use the **NZTA expiry check** link for the WoF and rego dates and enter them. Tap **Approve driver: delete photos**. Their trips then go live instantly and they can take jobs themselves.
 3. Drivers tap **Take it**, text the sender or seller to confirm pickup, then take a **pickup photo** (marks it collected) and a **drop-off photo** (marks it delivered). Photos show on the job in admin and in the sender's My posts. You don't need to do anything.
 4. **Payouts:** delivered jobs appear here with each driver's total. Pay them by bank transfer, then tap **Mark all paid**.
+
+**Urgent jobs:** urgent same-day jobs appear under **Urgent** with every driver out today, approved drivers with room who haven't posted a trip, ready-made texts, and a button to add $10 to the driver's pay from our side.
+
+**Problems:** anyone on a job can tap **Report a problem**. Reports land under **Problems** with the job's photos. Type what you did and tap **Mark sorted**. The person who reported it sees your note.
+
+**Phone alerts (free):** install the **ntfy** app, tap +, and subscribe to the channel name shown when you ran `010_phone_alerts.sql` (run `select value from app_settings where key = 'ntfy_topic';` to see it again). You'll get an alert for new jobs (urgent ones loudly), problems, declined checks, and ID or driver checks waiting. Alerts never include names, numbers or addresses.
 
 **If something goes wrong**
 - No driver by the deliver-by day: copy the "no driver yet" text and offer more days, meeting on the route, or a full refund.

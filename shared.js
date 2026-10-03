@@ -48,7 +48,7 @@ const itemTypeShort = k => (ITEM_TYPES[k]?.[0] || "").split(" (")[0];
 const SPACE_LABEL = { boot: "Car boot", ute: "Ute tray", trailer: "Trailer", van: "Van" };
 
 // Estimate what the sender pays, all in. The driver's pay is never reduced by our fee.
-function estimate({ from, to, size, handover, deadline, cover, check }) {
+function estimate({ from, to, size, handover, deadline, cover, check, bonus }) {
   if (!(from in KM) || !(to in KM) || from === to) return null;
   const onRoute = dist(from, to);
   const detour = handover === "route" ? 0 : 2 * RATE.typicalDetourKm * 2; // two stops, out and back
@@ -58,10 +58,11 @@ function estimate({ from, to, size, handover, deadline, cover, check }) {
   const prem = deadline ? Math.max(RATE.deadlineMin, (a + b) * RATE.deadlinePct) : 0;
   const base = a + b + c + h + k, driver = base + prem;
   const fee = Math.max(RATE.feeMin, driver * RATE.feePct);
-  const total = Math.round(driver + fee + (COVER_FEE[cover] || 0));
-  const normal = deadline ? Math.round(base + Math.max(RATE.feeMin, base * RATE.feePct) + (COVER_FEE[cover] || 0)) : total;
+  const extra = Number(bonus) || 0;   // urgent bonus: all of it to the driver, no fee on it
+  const total = Math.round(driver + fee + (COVER_FEE[cover] || 0)) + extra;
+  const normal = deadline ? Math.round(base + Math.max(RATE.feeMin, base * RATE.feePct) + (COVER_FEE[cover] || 0)) + extra : total;
   return { onRoute, detour, driver: Math.round(driver), total, normal, prem: Math.round(prem), handling: h, check: k,
-    parts: { route: a, detour: b + c, handling: h, check: k, prem, fee } };
+    bonus: extra, parts: { route: a, detour: b + c, handling: h, check: k, prem, fee, bonus: extra } };
 }
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -81,6 +82,11 @@ function makeClient() {
 
 // What the driver is paid from an all-in price (price = driver + 15% fee, fee at least $3)
 const driverFromPrice = p => { p = Number(p) || 0; return Math.round(p / (1 + RATE.feePct) >= RATE.feeMin / RATE.feePct ? p / (1 + RATE.feePct) : p - RATE.feeMin); };
+
+// What a driver is paid for a job: the price less our fee, plus any urgent bonus (sender's and ours), which go to the driver in full
+const driverPay = j => driverFromPrice((Number(j.price_estimate) || 0) - (j.urgent_bonus || 0)) + (j.urgent_bonus || 0) + (j.admin_bonus || 0);
+const URGENT_BONUSES = [15, 30, 50];
+const REPORT_KINDS = { damaged: "Damaged", late: "Late or not delivered", not_turned_up: "Driver or seller didn't turn up", wrong_item: "Wrong item", not_as_described: "Not as described", payment: "Payment problem", safety: "Safety or behaviour", other: "Something else" };
 
 // Same-day jobs are express (+25%), like a set arrival time
 const isExpress = (jobDate, windowEnd) => jobDate && jobDate === windowEnd && windowEnd === todayISO();
@@ -122,7 +128,7 @@ async function shrinkImage(file, max = 1600, quality = 0.72) {
     return await new Promise(res => c.toBlob(res, "image/jpeg", quality));
   } finally { URL.revokeObjectURL(url); }
 }
-const PHOTO_LABEL = { pickup: "Pickup", dropoff: "Drop-off", no_show: "Nobody there", check: "Check" };
+const PHOTO_LABEL = { pickup: "Pickup", dropoff: "Drop-off", no_show: "Nobody there", check: "Check", report: "Problem" };
 // Fill every [data-photos="<job id>"] element with that job's photos (signed links last an hour)
 async function showPhotos(db, root = document) {
   const els = [...root.querySelectorAll("[data-photos]")]; if (!els.length || !db) return;

@@ -167,3 +167,20 @@ details.why .rates div{grid-template-columns:52px 1fr}
   .foot{max-width:760px}
 }
 @media (min-width: 900px) and (max-height: 700px){ .split .col-a{position:static} }
+
+/* urgent jobs and problem reports */
+.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.card.urgent{border:2px solid var(--warn)}
+.urgentbar{background:var(--warn-bg);color:var(--warn);font-weight:800;font-size:13px;border-radius:7px;padding:5px 9px}
+.urgentf{background:var(--warn-bg);border-radius:8px;padding:10px}
+.urgentf label,.urgentf .fine{color:var(--warn)}
+details.report{border-top:1px solid var(--line);padding-top:8px}
+details.report>summary{color:var(--ink3);font-weight:600;font-size:13px}
+.reportf{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+
+/* terms and privacy pages */
+.legal{display:flex;flex-direction:column;gap:10px;padding-top:18px;max-width:760px}
+.legal h3{margin-top:10px}
+.legal p{margin:0;font-size:14.5px;color:var(--ink2)}
+.legal .plainlist{font-size:14.5px}
+a.pill{display:inline-block}
