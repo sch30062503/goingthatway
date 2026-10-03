@@ -616,7 +616,7 @@ async function loadMine() {
       ${["matched", "collected", "delivered", "declined"].includes(r.status) ? `<div data-driverfor="${r.id}" class="fine">Finding driver details…</div><div data-photos="${r.id}"></div>` : ""}
       ${checkPanel(r)}
       ${r.status === "delivered" ? (r.rating ? `<p class="fine">You gave this a thumbs ${r.rating > 0 ? "up" : "down"}. Thanks for letting us know.</p>`
-        : `<div class="rate"><span class="sub">How did it go?</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small go" type="button" data-rate="${r.id}:up">${THUMB_UP} Thumbs up</button><button class="btn small" type="button" data-rate="${r.id}:down">${THUMB_DOWN} Thumbs down</button></div>
+        : `<div class="rate"><span class="sub">How did it go?</span><span class="fine">If it arrived damaged, use Report a problem below within 48 hours, with photos.</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small go" type="button" data-rate="${r.id}:up">${THUMB_UP} Thumbs up</button><button class="btn small" type="button" data-rate="${r.id}:down">${THUMB_DOWN} Thumbs down</button></div>
           <div id="rn-${r.id}" hidden class="field"><label for="rt-${r.id}">What went wrong? <span class="hint">(optional, only we see this)</span></label><textarea id="rt-${r.id}" maxlength="1000"></textarea></div></div>`) : ""}
       ${r.status === "declined" ? `<p class="fine">It wasn't collected. We'll refund you everything except the driver's trip, usually within 2 working days.</p>` : ""}
       ${r.status === "new" && r.payment === "unpaid" ? payPanel(r) : ""}
