@@ -184,3 +184,5 @@ details.report>summary{color:var(--ink3);font-weight:600;font-size:13px}
 .legal p{margin:0;font-size:14.5px;color:var(--ink2)}
 .legal .plainlist{font-size:14.5px}
 a.pill{display:inline-block}
+.seg3{grid-template-columns:repeat(3,1fr)}
+.seg3 button{font-size:12.5px;line-height:1.2}

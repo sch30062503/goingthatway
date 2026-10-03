@@ -8,7 +8,7 @@ About 20 minutes. Everything here is free.
    - Name: `goingthatway`
    - Region: **Sydney** (closest to NZ)
    - Save the database password somewhere safe. You won't need to give it to anyone.
-2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `011_emails.sql`, so a new project only needs `schema.sql`.)
+2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `012_click_collect.sql`, so a new project only needs `schema.sql`.)
 3. Go to **Authentication** → **Sign In / Providers**:
    - Turn **off** **Allow anonymous sign-ins**. Everyone now makes an account.
    - Under **Email**, turn **off** **Confirm email** for the trial. Supabase's free email only reaches your own team, so confirmation emails wouldn't arrive. Everyone is ID-checked by you instead.

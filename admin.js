@@ -106,12 +106,13 @@ function jobCard(j) {
   const statusSel = `<select data-status="jobs:${j.id}" style="width:auto;font-size:14px;padding:5px 8px">${["new", "open", "matched", "collected", "delivered", "cancelled", "no_show", "declined"].map(o => `<option${o === j.status ? " selected" : ""}>${o}</option>`).join("")}</select>`;
   const paySel = `<select data-pay="${j.id}" style="width:auto;padding:2px 6px;font-size:13px">${["unpaid", "paid", "refunded", "part_refunded"].map(o => `<option${o === j.payment ? " selected" : ""}>${o}</option>`).join("")}</select>`;
   return `<div class="card">
-    <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : ""}<span class="item">${esc(j.item)}</span>${j.urgent ? ` <span class="chip warn">Urgent today</span>` : ""}${openReports(j.id).length ? ` <span class="chip warn">Problem reported</span>` : ""}</div>${statusSel}</div>
+    <div class="row"><div>${j.kind === "pickup" ? `<span class="tag">Pick-up-only buy</span> ` : j.kind === "collect" ? `<span class="tag">Click and collect</span> ` : ""}<span class="item">${esc(j.item)}</span>${j.urgent ? ` <span class="chip warn">Urgent today</span>` : ""}${openReports(j.id).length ? ` <span class="chip warn">Problem reported</span>` : ""}</div>${statusSel}</div>
     <dl class="kv">
       <dt>Ref / price</dt><dd class="num"><b>${jobRef(j)}</b> · $${Math.round(j.price_estimate || 0)} all in · driver $${driverPay(j)}${(j.urgent_bonus || j.admin_bonus) ? ` (incl. $${(j.urgent_bonus || 0) + (j.admin_bonus || 0)} bonus${j.admin_bonus ? `, $${j.admin_bonus} from us` : ""})` : ""}${priceOk ? "" : ` · <span style="color:var(--warn)">check price: expected $${exp}</span>`}</dd>
       <dt>Route</dt><dd>${esc(j.from_town)} → ${esc(j.to_town)} · ${fmtDate(j.job_date)} to ${fmtDate(j.window_end)}${j.deadline_time ? ", by " + fmtTime(j.deadline_time) : ""}</dd>
       <dt>Sender</dt><dd>${esc(j.sender_name)} · ${phoneLink(j.sender_phone)} ${idChip(profileOf(j.user_id).id_status)}</dd>
       ${j.seller_name || j.seller_phone ? `<dt>Seller</dt><dd>${esc(j.seller_name || "")} · ${phoneLink(j.seller_phone)}</dd>` : ""}
+      ${j.kind === "collect" ? `<dt>Click and collect</dt><dd><b>${esc(j.store_name || "")}</b> · order <b class="num">${esc(j.order_ref || "")}</b> under ${esc(j.order_name || "")}</dd>` : ""}
       <dt>Collect</dt><dd>${esc(j.pickup_address || "–")} · ${esc(PICKUP_LABEL[j.pickup_mode] || "")}${j.pickup_hours ? " · " + esc(j.pickup_hours) : ""}${j.pickup_notes ? " · " + esc(j.pickup_notes) : ""}</dd>
       <dt>Deliver</dt><dd>${esc(j.drop_address || "–")}</dd>
       <dt>Item</dt><dd>${j.item_type ? esc(itemTypeShort(j.item_type)) + " · " : ""}${esc(SIZE_SHORT[j.size] || j.size)}${j.heavy ? " · <b>2-person lift</b>" : ""} · not insured (trial)</dd>
