@@ -186,3 +186,7 @@ details.report>summary{color:var(--ink3);font-weight:600;font-size:13px}
 a.pill{display:inline-block}
 .seg3{grid-template-columns:repeat(3,1fr)}
 .seg3 button{font-size:12.5px;line-height:1.2}
+.earn{display:flex;flex-wrap:wrap;gap:10px}
+.earn>div{flex:1;min-width:120px;background:var(--soft);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:2px}
+.earn b{font-size:22px;color:var(--sign)}
+.ts{min-height:65px}

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@500&display=swap">
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
 <header class="hero top"><div class="hero-in">
@@ -28,7 +28,7 @@
 <li><b>If you drive:</b> your licence class, vehicle plate, make and model, and WoF and rego expiry dates.</li>
 <li><b>Your jobs and trips:</b> pickup and delivery addresses, the seller's name and mobile (which buyers give us), item details, dates, and messages or notes you add.</li>
 <li><b>Photos taken during a job:</b> at pickup, at drop-off, "check it first" photos, and any photos sent with a problem report.</li>
-<li><b>Payments:</b> amounts, references and whether a job has been paid out.</li>
+<li><b>Payments:</b> amounts, references and whether a job has been paid out. If you drive, the bank account and account name you give us for payouts.</li>
 </ul>
 
 <h3>Why we collect it</h3>
@@ -39,12 +39,13 @@
 <li>The public board never shows names, phone numbers or addresses. It only shows the item, towns, dates and price.</li>
 <li>When a driver takes your job, they see the addresses and contact details needed to do it, and you see the driver's name and mobile.</li>
 <li>Your ID photo and selfie are seen only by the Going That Way admin. <b>They're deleted as soon as the check is done</b>, and we keep only a record that you were verified.</li>
+<li>Drivers' bank details are seen only by that driver and the admin, and are used only to pay them.</li>
 <li>The admin can see all accounts and jobs, to run the service and sort out problems.</li>
 <li>We don't sell your information, and we don't share it with anyone else unless the law requires it, for example a request from the police.</li>
 </ul>
 
 <h3>Where it's kept</h3>
-<p>Accounts, jobs and photos are stored with our database provider, Supabase, in its Sydney, Australia region. The website itself is hosted by GitHub. Admin alerts are sent through a notification service (ntfy) and contain only a job reference, towns and a price, never names, phone numbers or addresses.</p>
+<p>Accounts, jobs and photos are stored with our database provider, Supabase, in its Sydney, Australia region. The website itself is hosted by GitHub. Emails are sent through Resend. The "I'm human" check on sign-up and sign-in is provided by Cloudflare. Admin alerts are sent through a notification service (ntfy) and contain only a job reference, towns and a price, never names, phone numbers or addresses.</p>
 
 <h3>How long we keep it</h3>
 <p>ID photos are deleted once checked. Job and payment records are kept for seven years, because New Zealand businesses must keep financial records that long. Job photos are kept only as long as they're useful for sorting out problems.</p>
@@ -54,7 +55,7 @@
 
 <p class="fine" style="margin-top:24px"><a href="./">Back to Going That Way</a> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a></p>
 </main></div>
-<script src="config.js?v=20"></script>
+<script src="config.js?v=21"></script>
 <script>
 // Fill in how to contact us from config.js
 (function () {

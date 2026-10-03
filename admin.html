@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@500&display=swap">
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=21">
 <style>
 .app{max-width:760px}
 .a-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:14px 0;background:var(--chip);padding:4px;border-radius:10px}
@@ -20,6 +20,9 @@
 .acts{display:flex;flex-wrap:wrap;gap:6px}
 .sugg{background:var(--chip);border-radius:8px;padding:8px 10px;font-size:13.5px;display:flex;justify-content:space-between;gap:8px;align-items:center}
 textarea.tmpl{font-size:13px;min-height:84px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.tiles>div{background:var(--soft);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:2px}
+.tiles b{font-size:20px;color:var(--sign)}
 </style>
 </head>
 <body>
@@ -30,9 +33,10 @@ textarea.tmpl{font-size:13px;min-height:84px}
   </header>
   <main id="view"></main>
 </div>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js?v=20"></script>
-<script src="shared.js?v=20"></script>
-<script src="admin.js?v=20"></script>
+<script src="config.js?v=21"></script>
+<script src="shared.js?v=21"></script>
+<script src="admin.js?v=21"></script>
 </body>
 </html>

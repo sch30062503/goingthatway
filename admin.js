@@ -84,7 +84,14 @@ function loginView(msg = "") {
     <form id="login"><div class="fields">
       <div class="field full"><label for="l-email">Email</label><input id="l-email" type="email" autocomplete="username" required></div>
       <div class="field full"><label for="l-pass">Password</label><input id="l-pass" type="password" autocomplete="current-password" required></div>
-    </div>${msg ? `<div class="err">${esc(msg)}</div>` : ""}<button class="btn go" type="submit">Sign in</button></form></div></section>`;
+    </div>${cfg.TURNSTILE_SITE_KEY ? `<div id="ts-admin" style="margin-top:10px"></div>` : ""}${msg ? `<div class="err">${esc(msg)}</div>` : ""}<button class="btn go" type="submit">Sign in</button></form></div></section>`;
+  mountAdminTs();
+}
+let adminTs, adminTsTries = 0;
+function mountAdminTs() {
+  const el = document.getElementById("ts-admin"); if (!el || !cfg.TURNSTILE_SITE_KEY) return;
+  if (!window.turnstile) { if (adminTsTries++ < 40) setTimeout(mountAdminTs, 250); return; }
+  adminTs = window.turnstile.render(el, { sitekey: cfg.TURNSTILE_SITE_KEY, theme: "auto" });
 }
 async function load() {
   const [j, t, b, p, rp] = await Promise.all([
@@ -191,13 +198,63 @@ const bizCard = b => `<div class="card"><span class="item">${esc(b.business_name
 function payouts() {
   const owed = data.jobs.filter(j => DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid && j.matched_trip);
   const by = {};
-  owed.forEach(j => { const t = tripOf(j); if (!t) return; (by[t.driver_phone] ||= { name: t.driver_name, phone: t.driver_phone, jobs: [], total: 0 }); by[t.driver_phone].jobs.push(j); by[t.driver_phone].total += driverPay(j); });
+  owed.forEach(j => { const t = tripOf(j); if (!t) return; const k = t.user_id || t.driver_phone; (by[k] ||= { uid: t.user_id, name: t.driver_name, phone: t.driver_phone, jobs: [], total: 0 }); by[k].jobs.push(j); by[k].total += driverPay(j); });
   const list = Object.values(by);
   if (!list.length) return `<div class="empty">No driver payouts owed.</div>`;
-  return list.map(d => `<div class="card"><div class="row"><span class="item">${esc(d.name)}</span><b class="num">$${d.total}</b></div>
+  return list.map(d => { const p = profileOf(d.uid);
+    return `<div class="card"><div class="row"><span class="item">${esc(d.name)}</span><b class="num">$${d.total}</b></div>
     <p class="sub">${phoneLink(d.phone)} · ${d.jobs.map(j => `${esc(j.item)} (${jobRef(j)}, $${driverPay(j)})`).join(", ")}</p>
-    <p class="fine">Pay by bank transfer, reference "GTW payout". Ask for their account number the first time.</p>
-    <button class="btn small go" data-payall="${d.jobs.map(j => j.id).join(",")}">Mark all ${d.jobs.length} paid</button></div>`).join("");
+    ${p.bank_account ? `<div class="sugg"><span>Pay <b class="num">$${d.total}</b> to <b class="num">${esc(p.bank_account)}</b> · ${esc(p.bank_account_name || "")} · reference <b>GTW payout</b></span><span class="acts">${btnCopy("Copy account", p.bank_account)}${btnCopy("Copy amount", String(d.total))}</span></div>`
+      : `<div class="err">No bank account yet. Ask ${esc(d.name.split(" ")[0])} to add it under My account → Your earnings.</div>`}
+    <button class="btn small go" data-payall="${d.jobs.map(j => j.id).join(",")}">Paid: mark all ${d.jobs.length} paid</button>
+    <textarea class="tmpl" hidden aria-label="Text to copy"></textarea></div>`; }).join("");
+}
+
+// ---------- Accounts: monthly summary and spreadsheet downloads ----------
+let acctMonth = todayISO().slice(0, 7);
+const RECEIVED = ["paid", "refunded", "part_refunded"];
+function money(j) {
+  const price = Math.round(Number(j.price_estimate) || 0), received = RECEIVED.includes(j.payment) ? price : 0;
+  const owesDriver = received && DRIVER_OWED.includes(j.status) && j.matched_trip, driver = owesDriver ? driverPay(j) : 0;
+  const refunded = j.payment === "refunded" ? price : j.payment === "part_refunded" ? Math.max(0, price - driver) : 0;
+  return { price, received, refunded, driver, net: received - refunded - driver };
+}
+const monthJobs = m => data.jobs.filter(j => String(j.created_at).slice(0, 7) === m && RECEIVED.includes(j.payment));
+function accounts() {
+  const months = [...new Set(data.jobs.map(j => String(j.created_at).slice(0, 7)).concat(todayISO().slice(0, 7)))].sort().reverse();
+  const js = monthJobs(acctMonth), tot = js.reduce((a, j) => { const m = money(j); a.received += m.received; a.refunded += m.refunded; a.driver += m.driver; a.net += m.net; return a; }, { received: 0, refunded: 0, driver: 0, net: 0 });
+  const paidOut = data.jobs.filter(j => j.driver_paid && String(j.driver_paid_at || "").slice(0, 7) === acctMonth).reduce((n, j) => n + driverPay(j), 0);
+  const label = m => new Date(m + "-01T00:00:00").toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
+  return `<div class="card"><div class="row"><h3>Accounts</h3><select id="acct-m" style="width:auto">${months.map(m => `<option value="${m}"${m === acctMonth ? " selected" : ""}>${label(m)}</option>`).join("")}</select></div>
+    <div class="tiles">
+      <div><span class="label">Jobs paid for</span><b class="num">${js.length}</b></div>
+      <div><span class="label">Received</span><b class="num">$${tot.received}</b></div>
+      <div><span class="label">Refunded</span><b class="num">$${tot.refunded}</b></div>
+      <div><span class="label">Drivers' share</span><b class="num">$${tot.driver}</b></div>
+      <div><span class="label">Kept by us</span><b class="num">$${tot.net}</b></div>
+      <div><span class="label">Paid out to drivers this month</span><b class="num">$${paidOut}</b></div>
+    </div>
+    <p class="fine">Jobs are counted in the month they were posted. "Kept by us" is what we received, less refunds and the drivers' share (including any bonus we added). It's before costs. If you register for GST, check with your accountant how it applies to the fee and the drivers' share.</p>
+    <div class="acts"><button class="btn small go" id="csv-jobs">Download jobs spreadsheet</button><button class="btn small" id="csv-payouts">Download driver payouts</button></div>
+  </div>`;
+}
+function csvDownload(name, rows) {
+  const cell = v => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const blob = new Blob(["﻿" + rows.map(r => r.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function jobsCsv() {
+  const rows = [["Posted", "Reference", "Type", "Item", "From", "To", "Status", "Payment", "Price", "Received", "Refunded", "Driver's share", "Kept by us", "Urgent bonus (sender)", "Bonus from us", "Driver", "Driver paid", "Driver paid on", "Delivered on"]];
+  monthJobs(acctMonth).forEach(j => { const m = money(j), t = tripOf(j);
+    rows.push([String(j.created_at).slice(0, 10), jobRef(j), j.kind, j.item, j.from_town, j.to_town, j.status, j.payment, m.price, m.received, m.refunded, m.driver, m.net, j.urgent_bonus || 0, j.admin_bonus || 0, t ? t.driver_name : "", j.driver_paid ? "yes" : "no", j.driver_paid_at ? String(j.driver_paid_at).slice(0, 10) : "", j.delivered_at ? String(j.delivered_at).slice(0, 10) : ""]); });
+  csvDownload(`going-that-way-jobs-${acctMonth}.csv`, rows);
+}
+function payoutsCsv() {
+  const rows = [["Paid on", "Driver", "Bank account", "Account name", "Reference", "Item", "Amount"]];
+  data.jobs.filter(j => j.driver_paid && String(j.driver_paid_at || "").slice(0, 7) === acctMonth).forEach(j => { const t = tripOf(j) || {}, p = profileOf(t.user_id);
+    rows.push([String(j.driver_paid_at).slice(0, 10), t.driver_name || "", p.bank_account || "", p.bank_account_name || "", jobRef(j), j.item, driverPay(j)]); });
+  csvDownload(`going-that-way-driver-payouts-${acctMonth}.csv`, rows);
 }
 
 function render() {
@@ -210,7 +267,7 @@ function render() {
   const owed = data.jobs.filter(j => DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid).length;
   const urgent = data.jobs.filter(j => j.urgent && ["new", "open"].includes(j.status) && j.window_end >= todayISO());
   const probs = data.reports.filter(r => r.status === "open");
-  const tabs = [["urgent", "Urgent", urgent.length], ["problems", "Problems", probs.length], ["pay", "Payments to check", toPay.length], ["ids", "ID checks", idChecks.length], ["drivers", "Driver checks", drChecks.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0]];
+  const tabs = [["urgent", "Urgent", urgent.length], ["problems", "Problems", probs.length], ["pay", "Payments to check", toPay.length], ["ids", "ID checks", idChecks.length], ["drivers", "Driver checks", drChecks.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0], ["accounts", "Accounts", 0]];
   const body = {
     urgent: urgent.map(urgentCard).join("") || `<div class="empty">No urgent jobs waiting.</div>`,
     problems: (probs.map(reportCard).join("") || `<div class="empty">No open problems.</div>`) + (data.reports.some(r => r.status === "resolved") ? `<div class="label" style="margin-top:12px">Sorted</div>` + data.reports.filter(r => r.status === "resolved").slice(0, 20).map(reportCard).join("") : ""),
@@ -220,6 +277,7 @@ function render() {
     live: live.map(jobCard).join("") || `<div class="empty">No live jobs.</div>`,
     trips: upcoming.map(tripCard).join("") || `<div class="empty">No upcoming trips.</div>`,
     payouts: payouts(),
+    accounts: accounts(),
     biz: data.biz.map(bizCard).join("") || `<div class="empty">No businesses yet.</div>`,
     past: J(["delivered", "cancelled", "no_show", "declined"]).map(jobCard).join("") || `<div class="empty">Nothing yet.</div>`,
   }[tab];
@@ -238,7 +296,9 @@ function alertBox(msg) { const s = document.querySelector("#view section"); if (
 
 document.addEventListener("submit", async e => {
   if (e.target.id !== "login") return; e.preventDefault();
-  const { error } = await db.auth.signInWithPassword({ email: $("#l-email").value.trim(), password: $("#l-pass").value });
+  let captchaToken;
+  if (cfg.TURNSTILE_SITE_KEY) { captchaToken = window.turnstile && adminTs !== undefined ? window.turnstile.getResponse(adminTs) : ""; if (!captchaToken) return loginView("Please complete the \"I'm human\" check first."); }
+  const { error } = await db.auth.signInWithPassword({ email: $("#l-email").value.trim(), password: $("#l-pass").value, options: { captchaToken } });
   if (error) return loginView("Sign-in failed: " + error.message);
   start();
 });
@@ -265,10 +325,13 @@ document.addEventListener("click", async e => {
   if (rs) return busyBtn(rs, async () => { const id = rs.dataset.resolve; const { error } = await db.from("job_reports").update({ status: "resolved", admin_note: ($("#rn-" + id)?.value || "").trim() || null, resolved_at: new Date().toISOString() }).eq("id", id); if (error) throw error; });
   const bn = e.target.closest("[data-bonus]");
   if (bn) { const [id, d] = bn.dataset.bonus.split(":"); const j = data.jobs.find(x => x.id === id); return update("jobs", id, { admin_bonus: Math.max(0, (j?.admin_bonus || 0) + Number(d)) }); }
+  if (e.target.closest("#csv-jobs")) return jobsCsv();
+  if (e.target.closest("#csv-payouts")) return payoutsCsv();
   const pa = e.target.closest("[data-payall]");
   if (pa) { for (const id of pa.dataset.payall.split(",")) { const { error } = await db.from("jobs").update({ driver_paid: true }).eq("id", id); if (error) return alertBox(error.message); } return load(); }
 });
 document.addEventListener("change", e => {
+  if (e.target.id === "acct-m") { acctMonth = e.target.value; return render(); }
   const py = e.target.closest("[data-pay]"); if (py) return update("jobs", py.dataset.pay, { payment: py.value });
   const dp = e.target.closest("[data-dpaid]"); if (dp) return update("jobs", dp.dataset.dpaid, { driver_paid: dp.checked });
   const s = e.target.closest("[data-status]"); if (s) { const [tb, id] = s.dataset.status.split(":"); return update(tb, id, { status: s.value }); }

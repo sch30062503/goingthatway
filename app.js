@@ -35,6 +35,22 @@ function gate(title, body, btnLabel, target) {
 }
 const postingAs = () => `<p class="fine" style="grid-column:1/-1">Posting as <b>${esc(me.profile?.name || me.user?.email || "")}</b> · ${esc(me.profile?.phone || "")}. Change these under My account. Your details are never shown publicly.</p>`;
 
+// ---------- "I'm human" check (Cloudflare Turnstile), on only once a site key is in config.js ----------
+const TS = { ids: {}, tries: 0 };
+const tsBox = name => cfg.TURNSTILE_SITE_KEY ? `<div class="ts" id="ts-${name}"></div>` : "";
+function tsMount() {
+  if (!cfg.TURNSTILE_SITE_KEY || !document.querySelector(".ts:empty")) return;
+  if (!window.turnstile) { if (TS.tries++ < 40) setTimeout(tsMount, 250); return; }
+  document.querySelectorAll(".ts:empty").forEach(el => { TS.ids[el.id.slice(3)] = window.turnstile.render(el, { sitekey: cfg.TURNSTILE_SITE_KEY, theme: "auto", size: "flexible" }); });
+}
+function tsToken(name) {
+  if (!cfg.TURNSTILE_SITE_KEY) return undefined;
+  const id = TS.ids[name], t = id !== undefined && window.turnstile ? window.turnstile.getResponse(id) : "";
+  if (!t) throw new Error("Please complete the \"I'm human\" check first. If you can't see it, refresh the page.");
+  return t;
+}
+function tsReset(name) { try { if (window.turnstile && TS.ids[name] !== undefined) window.turnstile.reset(TS.ids[name]); } catch (e) {} }
+
 // ---------- small pieces ----------
 const v = id => ($("#" + id)?.value || "").trim();
 const contactFields = who => { const m = memo.get(); return `
@@ -423,10 +439,10 @@ function account() {
     <div class="card"><h3>Sign in</h3><form id="siForm" novalidate><div class="fields">
       <div class="field full"><label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username" required></div>
       <div class="field full"><label for="si-pass">Password</label><input id="si-pass" type="password" autocomplete="current-password" required></div>
-    </div><div id="si-err"></div><button class="btn go" type="submit">Sign in</button>
+    </div>${tsBox("si")}<div id="si-err"></div><button class="btn go" type="submit">Sign in</button>
     <button class="linkbtn" type="button" id="forgotBtn" style="align-self:flex-start;font-size:13.5px">Forgotten your password?</button>
     <div id="forgotBox" hidden><div class="field"><label for="fp-email">Your email</label><input id="fp-email" type="email" autocomplete="email"></div>
-      <button class="btn" type="button" id="forgotSend" style="margin-top:8px">Email me a reset link</button><div id="fp-msg"></div></div></form></div>
+      ${tsBox("fp")}<button class="btn" type="button" id="forgotSend" style="margin-top:8px">Email me a reset link</button><div id="fp-msg"></div></div></form></div>
     <div class="card"><h3>New here? Create a free account</h3><form id="suForm" novalidate><div class="fields">
       <div class="field full"><label for="su-name">Full name</label><input id="su-name" autocomplete="name" required></div>
       <div class="field full"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email" required></div>
@@ -435,7 +451,7 @@ function account() {
       <div class="field"><label for="su-addr">Home address</label><input id="su-addr" autocomplete="street-address" required></div>
     </div>
     <label class="check"><input type="checkbox" id="su-ok" required> <span>I'm 18 or over and I agree to the <a href="terms.html" target="_blank">terms</a> and <a href="privacy.html" target="_blank">privacy policy</a>. I understand Going That Way checks everyone's ID once: my ID photo and selfie are only seen by the Going That Way admin, used only to confirm who I am, and deleted once checked.</span></label>
-    <div id="su-err"></div><button class="btn go" type="submit">Create account</button></form></div>
+    ${tsBox("su")}<div id="su-err"></div><button class="btn go" type="submit">Create account</button></form></div>
   </section>`;
   const P = me.profile || {}, idDone = ["pending", "verified"].includes(P.id_status), needLicence = !(P.id_type === "driver_licence" && idDone);
   setTimeout(loadMine, 0);
@@ -469,6 +485,12 @@ function account() {
         </div><p class="fine">Learner licences can't drive for Going That Way. We check your vehicle's WoF and rego from the plate.</p><div id="dr-err"></div><button class="btn go" type="submit">Apply to drive</button></form>`}
     </div>
 
+    ${["verified", "pending"].includes(P.driver_status) ? `<div class="card"><div class="row"><h3>Your earnings</h3><span class="chip">Paid weekly</span></div>
+      <div id="earn" class="fine">Loading…</div>
+      <form id="bkForm" novalidate><div class="fields">
+        <div class="field"><label for="bk-acc">Bank account for payouts</label><input id="bk-acc" inputmode="numeric" autocomplete="off" placeholder="12-3456-7890123-00" value="${esc(P.bank_account || "")}"></div>
+        <div class="field"><label for="bk-name">Account name</label><input id="bk-name" autocomplete="off" value="${esc(P.bank_account_name || P.name || "")}"></div>
+      </div><p class="fine">Only you and the Going That Way admin can see this. We pay what you've earned each week by bank transfer.</p><div id="bk-err"></div><button class="btn" type="submit">Save bank details</button></form></div>` : ""}
     <div class="card"><h3>3. Your details</h3><form id="pfForm" novalidate><div class="fields">
       <div class="field full"><label for="pf-name">Full name</label><input id="pf-name" value="${esc(P.name || "")}" required></div>
       <div class="field full"><label>Email</label><input value="${esc(me.user.email || "")}" disabled></div>
@@ -506,6 +528,24 @@ function checkPanel(r) {
   return `<p class="fine">Your driver will send you photos from the seller's before loading it. Keep your phone handy on the day.</p>`;
 }
 const TRIP_STATUS = { new: ["Waiting for licence check", "y"], open: ["Live", "g"], full: ["Full", ""], done: ["Done", "g"], cancelled: ["Cancelled", ""] };
+// A driver's money: owed (done, not yet paid) and paid, from the jobs they've taken
+async function loadEarnings(tripIds) {
+  const box = $("#earn"); if (!box) return;
+  if (!tripIds.length) { box.textContent = "Take a job on one of your trips and your earnings show here."; return; }
+  const { data } = await db.from("jobs").select("*").in("matched_trip", tripIds);
+  const done = (data || []).filter(j => ["delivered", "no_show", "declined"].includes(j.status));
+  const owed = done.filter(j => !j.driver_paid), paid = done.filter(j => j.driver_paid);
+  const sum = a => a.reduce((n, j) => n + driverPay(j), 0);
+  const going = (data || []).filter(j => ["matched", "collected"].includes(j.status));
+  box.className = "";
+  box.innerHTML = `<div class="earn">
+      <div><span class="label">To be paid</span><b class="num">$${sum(owed)}</b><span class="fine">${owed.length} job${owed.length === 1 ? "" : "s"}, in the next weekly payout</span></div>
+      <div><span class="label">Paid so far</span><b class="num">$${sum(paid)}</b><span class="fine">${paid.length} job${paid.length === 1 ? "" : "s"}</span></div>
+      ${going.length ? `<div><span class="label">On the go</span><b class="num">$${sum(going)}</b><span class="fine">once delivered</span></div>` : ""}
+    </div>
+    ${done.length ? `<details class="more"><summary>Job by job</summary><ul class="plainlist" style="margin-top:6px">${[...done].sort((a, b) => String(b.delivered_at || b.created_at).localeCompare(String(a.delivered_at || a.created_at))).map(j => `<li><span class="num">$${driverPay(j)}</span> · ${esc(j.item)} (${jobRef(j)}) · ${j.driver_paid ? `paid ${j.driver_paid_at ? new Date(j.driver_paid_at).toLocaleDateString("en-NZ") : ""}` : "to be paid"}</li>`).join("")}</ul></details>` : ""}
+    ${!me.profile?.bank_account && done.length ? `<div class="note">Add your bank account below so we can pay you.</div>` : ""}`;
+}
 async function loadMine() {
   const box = $("#mine");
   if (!db) { box.textContent = "Not connected yet."; return; }
@@ -517,6 +557,7 @@ async function loadMine() {
     db.from("profiles").select("verified_driver").eq("id", uid).single(),
   ]);
   const verified = !!p.data?.verified_driver;
+  loadEarnings((t.data || []).map(x => x.id));
   const parts = [];
   for (const r of (t.data || [])) {
     const [s, c] = TRIP_STATUS[r.status] || [r.status, ""];
@@ -590,7 +631,7 @@ const views = { send, drive, board, info, mine, business, account };
 function render() {
   $("#view").innerHTML = views[cur]();
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === cur));
-  updPickupMode(); updHeavy(); updUrgent(); updPrice();
+  updPickupMode(); updHeavy(); updUrgent(); updPrice(); TS.tries = 0; tsMount();
   if (cur === "drive") loadAgain();
 }
 function go(tab) { cur = tab; render(); window.scrollTo(0, 0); }
@@ -620,13 +661,15 @@ document.addEventListener("click", async e => {
   const tab = e.target.closest(".tabs [data-tab]"); if (tab) return go(tab.dataset.tab);
   const link = e.target.closest("[data-tab-link]"); if (link) return go(link.dataset.tabLink);
   if (e.target.closest("#mineBtn")) return go("account");
-  if (e.target.closest("#forgotBtn")) { $("#forgotBox").hidden = false; $("#fp-email").value = v("si-email"); $("#fp-email").focus(); return; }
+  if (e.target.closest("#forgotBtn")) { $("#forgotBox").hidden = false; $("#fp-email").value = v("si-email"); $("#fp-email").focus(); tsMount(); return; }
   const fs = e.target.closest("#forgotSend");
   if (fs) {
     const email = v("fp-email"), msg = $("#fp-msg");
     if (!/^\S+@\S+\.\S+$/.test(email)) { msg.innerHTML = `<div class="err">Please enter the email you signed up with.</div>`; return; }
+    let captchaToken; try { captchaToken = tsToken("fp"); } catch (err) { msg.innerHTML = `<div class="err">${esc(err.message)}</div>`; return; }
     fs.disabled = true; fs.textContent = "Sending…";
-    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname, captchaToken });
+    tsReset("fp");
     fs.disabled = false; fs.textContent = "Email me a reset link";
     msg.innerHTML = error ? `<div class="err">${niceError(error)}</div>` : `<div class="ok"><p class="sub">If there's an account for ${esc(email)}, a reset link is on its way from hello@goingthatway.co.nz. If it's not in your inbox within a few minutes, check your junk folder.</p></div>`;
     return;
@@ -748,7 +791,9 @@ document.addEventListener("submit", async e => {
   const f = e.target, btn = f.querySelector("button[type=submit]");
   const busy = async (box, fn) => { btn.disabled = true; const l = btn.textContent; btn.textContent = "Please wait…"; try { await fn(); } catch (err) { console.error(err); showErr(box, esc(err.message || String(err))); } finally { btn.disabled = false; btn.textContent = l; } };
   if (f.id === "siForm") return busy("#si-err", async () => {
-    const { error } = await db.auth.signInWithPassword({ email: v("si-email"), password: $("#si-pass").value });
+    const captchaToken = tsToken("si");
+    const { error } = await db.auth.signInWithPassword({ email: v("si-email"), password: $("#si-pass").value, options: { captchaToken } });
+    tsReset("si");
     if (error) throw new Error(/invalid/i.test(error.message) ? "That email and password don't match." : error.message);
     await loadMe(); go(me.profile && !idOk() ? "account" : cur === "account" ? "send" : cur);
   });
@@ -758,7 +803,9 @@ document.addEventListener("submit", async e => {
     if (pass.length < 8) throw new Error("Please use a password of at least 8 characters.");
     if (!validPhone(phone)) throw new Error("Please enter a NZ mobile number, like 021 123 4567.");
     if (!$("#su-ok").checked) throw new Error("Please tick the box to continue.");
-    const { data, error } = await db.auth.signUp({ email, password: pass, options: { data: { name, phone, address } } });
+    const captchaToken = tsToken("su");
+    const { data, error } = await db.auth.signUp({ email, password: pass, options: { data: { name, phone, address }, captchaToken } });
+    tsReset("su");
     if (error) throw new Error(/registered|exists/i.test(error.message) ? "There's already an account with that email. Sign in instead." : error.message);
     if (!data.session) { f.closest(".card").innerHTML = `<div class="ok"><h3>Check your email</h3><p class="sub">We've sent a link to ${esc(email)} to confirm your account.</p></div>`; return; }
     await loadMe(); go("account");
@@ -770,6 +817,15 @@ document.addEventListener("submit", async e => {
     recovery = false; history.replaceState(null, "", location.pathname);
     await loadMe(); go("account");
     $("#view").insertAdjacentHTML("afterbegin", `<div class="ok" style="margin-bottom:10px"><h3>Password changed</h3><p class="sub">You're signed in with your new password.</p></div>`);
+  });
+  if (f.id === "bkForm") return busy("#bk-err", async () => {
+    let acc = v("bk-acc").replace(/[\s]/g, "");
+    const digits = acc.replace(/-/g, "");
+    if (!acc.includes("-") && /^\d{15,16}$/.test(digits)) acc = `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6, 13)}-${digits.slice(13)}`;
+    if (!/^\d{2}-\d{4}-\d{7}-\d{2,3}$/.test(acc)) throw new Error("Please enter a NZ bank account number like 12-3456-7890123-00.");
+    const name = v("bk-name"); if (!name) throw new Error("Please add the name on the account.");
+    const { error } = await db.from("profiles").update({ bank_account: acc, bank_account_name: name }).eq("id", me.user.id); if (error) throw error;
+    await loadMe(); $("#bk-acc").value = acc; showErr("#bk-err", ""); btn.textContent = "Saved";
   });
   if (f.id === "pfForm") return busy("#pf-err", async () => {
     const row = { name: v("pf-name"), phone: v("pf-phone"), address: v("pf-addr") };

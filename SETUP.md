@@ -8,7 +8,7 @@ About 20 minutes. Everything here is free.
    - Name: `goingthatway`
    - Region: **Sydney** (closest to NZ)
    - Save the database password somewhere safe. You won't need to give it to anyone.
-2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `012_click_collect.sql`, so a new project only needs `schema.sql`.)
+2. When the project is ready, open **SQL Editor** → **New query**. Paste in the whole of `supabase/schema.sql` and click **Run**. It should say "Success". (It already includes the later updates in `002_payments.sql` to `013_payouts.sql`, so a new project only needs `schema.sql`.)
 3. Go to **Authentication** → **Sign In / Providers**:
    - Turn **off** **Allow anonymous sign-ins**. Everyone now makes an account.
    - Under **Email**, turn **off** **Confirm email** for the trial. Supabase's free email only reaches your own team, so confirmation emails wouldn't arrive. Everyone is ID-checked by you instead.
@@ -63,6 +63,10 @@ About 20 minutes. Everything here is free.
 **Phone alerts (free):** install the **ntfy** app, tap +, and subscribe to the channel name shown when you ran `010_phone_alerts.sql` (run `select value from app_settings where key = 'ntfy_topic';` to see it again). You'll get an alert for new jobs (urgent ones loudly), problems, declined checks, and ID or driver checks waiting. Alerts never include names, numbers or addresses.
 
 **Emails:** members get an email at each step (job posted, live, driver found, check photos ready, collected, delivered, ID and driver checks, problem sorted) through Resend, from hello@goingthatway.co.nz (replies forward to the admin). Password resets go through the same Resend account, set up as Supabase's SMTP server.
+
+**Payouts and accounts:** drivers add their bank account under My account → Your earnings. Payouts shows each driver's total with their account number to copy; pay it, then tap **Paid: mark all paid**. The **Accounts** tab shows each month's totals and downloads a jobs spreadsheet and a driver-payouts spreadsheet for your accountant.
+
+**"I'm human" check:** once `TURNSTILE_SITE_KEY` is in config.js and CAPTCHA is on in Supabase (Authentication → Attack Protection, provider Turnstile, with the secret key), sign-up, sign-in and password resets need the check.
 
 **If something goes wrong**
 - No driver by the deliver-by day: copy the "no driver yet" text and offer more days, meeting on the route, or a full refund.
