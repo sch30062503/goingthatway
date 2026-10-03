@@ -139,7 +139,7 @@ function send() {
         <p class="fine" style="grid-column:1/-1" id="j-by-hint">The more days you allow, the more drivers can take it. Today only is express (+25%).</p>
         <div class="field full urgentf"><label for="j-when">How soon?</label><select id="j-when"><option value="standard">By my deliver-by day</option><option value="urgent">Urgent: it has to get there today</option></select>
           <div id="j-urg" hidden><label for="j-bonus" style="margin-top:8px;display:block">Urgency bonus, all of it to the driver</label><select id="j-bonus">${URGENT_BONUSES.map(b => `<option value="${b}"${b === 30 ? " selected" : ""}>+$${b}</option>`).join("")}</select>
-          <p class="fine" style="margin-top:6px">A bigger bonus gets drivers to take a longer detour or leave sooner. We'll also personally ring around drivers heading your way today. Pay straight away and text us, so we can put it live fast.</p></div></div>
+          <p class="fine" style="margin-top:6px">A bigger bonus gets drivers to take a longer detour or leave sooner. We'll also personally ring around drivers heading your way today. Pay straight away so we can put it live fast. We're alerted the moment you post.</p></div></div>
         <div class="field full heavyf"><label class="check"><input type="checkbox" id="j-heavy"${pickup ? " checked" : ""}> <span><b>It's a two-person lift</b><br>Too heavy or awkward for one person to carry safely.</span></label>
           <label class="check" id="j-help-f" style="margin-top:8px"><input type="checkbox" id="j-help"> <span>${pickup ? "The seller will help the driver load it, and someone will be at my place to help unload." : "Someone will help the driver load it, and someone will help unload at the other end."}</span></label></div>
         <div class="field full"><label for="j-pm">How can the driver collect it?</label><select id="j-pm">${Object.entries(PICKUP_LABEL).map(([k, lab]) => `<option value="${k}">${lab}</option>`).join("")}</select></div>
@@ -408,7 +408,7 @@ function account() {
       <div class="field full"><label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username" required></div>
       <div class="field full"><label for="si-pass">Password</label><input id="si-pass" type="password" autocomplete="current-password" required></div>
     </div><div id="si-err"></div><button class="btn go" type="submit">Sign in</button>
-    <p class="fine">Forgotten your password? Text us and we'll reset it.</p></form></div>
+    <p class="fine">Forgotten your password? Resetting by email is coming soon. For now, keep it somewhere safe.</p></form></div>
     <div class="card"><h3>New here? Create a free account</h3><form id="suForm" novalidate><div class="fields">
       <div class="field full"><label for="su-name">Full name</label><input id="su-name" autocomplete="name" required></div>
       <div class="field full"><label for="su-email">Email</label><input id="su-email" type="email" autocomplete="email" required></div>
@@ -607,7 +607,7 @@ document.addEventListener("click", async e => {
     if (cx.dataset.confirm !== "1") { cx.dataset.confirm = "1"; cx.textContent = "Tap again to cancel"; return; }
     const [t, id] = cx.dataset.cancel.split(":"); cx.disabled = true;
     const { error } = await db.from(t).update({ status: "cancelled" }).eq("id", id);
-    if (error) { cx.textContent = "Couldn't cancel. Text us instead."; return; }
+    if (error) { cx.textContent = "Couldn't cancel. Use Report a problem on the job instead."; return; }
     return loadMine();
   }
   const cp = e.target.closest("[data-copy]"); if (cp) return copyText(cp.dataset.copy, cp);
