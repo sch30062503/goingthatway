@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@500&display=swap">
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
 <header class="hero top"><div class="hero-in">
@@ -75,14 +75,14 @@
 <p>The law requires us to keep records of payments, refunds and payouts to drivers, including the bank accounts we paid, for seven years under the Tax Administration Act 1994. We collect everything else by choice, to run the service safely.</p>
 
 <h3>Who we are</h3>
-<p>Going That Way<span data-legal></span> collects and holds this information. You can reach us at <span data-contact>use "Report a problem" on your job in the app</span>.</p>
+<p>Going That Way<span data-legal></span> collects and holds this information. You can reach us at <span data-contact>use "Report a problem" on your job in the app</span>.<span data-postal></span></p>
 
 <h3>Your rights</h3>
 <p>You can ask to see the personal information we hold about you, and ask us to correct it. You can update your name, mobile and address yourself under My account. To make a request, <span data-contact>use "Report a problem" on your job in the app</span>. If you're not happy with how we've handled your information, you can complain to the Privacy Commissioner at <a href="https://www.privacy.org.nz" target="_blank" rel="noopener">privacy.org.nz</a>.</p>
 
 <p class="fine" style="margin-top:24px"><a href="./">Back to Going That Way</a> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a></p>
 </main></div>
-<script src="config.js?v=27"></script>
+<script src="config.js?v=28"></script>
 <script>
 // Fill in how to contact us from config.js
 (function () {
@@ -92,7 +92,8 @@
   var how = bits.length ? bits.join(' or ') : 'use "Report a problem" on your job in the app';
   document.querySelectorAll('[data-contact]').forEach(function (el) { el.innerHTML = how; });
   var legal = [c.LEGAL_NAME, c.POSTAL_ADDRESS].filter(Boolean).join(", ");
-  document.querySelectorAll('[data-legal]').forEach(function (el) { el.textContent = legal ? " (" + legal + ")" : ""; });
+  document.querySelectorAll('[data-legal]').forEach(function (el) { el.textContent = c.LEGAL_NAME ? " (" + c.LEGAL_NAME + ")" : ""; });
+  document.querySelectorAll('[data-postal]').forEach(function (el) { el.textContent = c.POSTAL_ADDRESS ? " Postal address: " + c.POSTAL_ADDRESS + ". Please contact us by email. We don't take visits." : ""; });
 })();
 </script>
 </body>
