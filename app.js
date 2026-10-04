@@ -492,6 +492,7 @@ function account() {
       <div class="field"><label for="su-phone">Mobile</label><input id="su-phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="021 123 4567"></div>
       <div class="field"><label for="su-addr">Home address</label><input id="su-addr" autocomplete="street-address" required></div>
     </div>
+    <details class="more notice"><summary>How we use your information</summary><p class="fine">We collect your name, contact details, address and a one-off photo ID and selfie to check who you are, arrange your jobs, take and make payments, and keep the service safe. Drivers also give licence, vehicle and bank details. We share only what's needed with the other person on a job and the providers that run our website, database and emails, and we never sell it. Giving it is optional, but we can't create an account without it. You can ask to see or correct your information at hello@goingthatway.co.nz. <a href="privacy.html" target="_blank">Full privacy policy</a></p></details>
     <label class="check"><input type="checkbox" id="su-ok" required> <span>I'm 18 or over and I agree to the <a href="terms.html" target="_blank">terms</a> and <a href="privacy.html" target="_blank">privacy policy</a>. I understand Going That Way checks everyone's ID once: my ID photo and selfie are only seen by the Going That Way admin, used only to confirm who I am, and deleted once checked.</span></label>
     ${tsBox("su")}<div id="su-err"></div><button class="btn go" type="submit">Create account</button></form></div>
   </section>`;
