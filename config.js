@@ -9,6 +9,9 @@ window.GTW_CONFIG = {
   // Shown on the terms and privacy pages (leave blank until you have them)
   CONTACT_EMAIL: "hello@goingthatway.co.nz",
   CONTACT_PHONE: "",
+  // Shown on the privacy page as who collects and holds people's information
+  LEGAL_NAME: "",
+  POSTAL_ADDRESS: "",
   // Cloudflare Turnstile "I'm human" check on sign-up and sign-in (public site key; leave blank to switch off)
   TURNSTILE_SITE_KEY: "0x4AAAAAAFMrWojyEB1sWKps",
   // Business bank account for senders to pay into (appears in the text you send them)
