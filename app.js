@@ -186,7 +186,15 @@ function send() {
       <label class="check"><input type="checkbox" id="c-ok" required> <span>It's worth less than $500 and isn't dangerous goods, cash, drugs, weapons or a live animal. Someone at each end will help the driver load and unload anything heavy. I understand items aren't insured during the trial and are carried at owner's risk, and that if the driver arrives when I said and it isn't available, a no-show fee covering their trip is kept from my payment. <a href="terms.html" target="_blank">Full terms</a></span></label>
       <div id="j-err"></div>
       <button class="btn go" type="submit">Post and pay</button>
-    </form></div>
+    </form>
+    <details class="more" id="hvBox"><summary>Worth more than $500? Tell me when you can carry it</summary>
+      <div class="hv"><p class="fine">During the trial we can only carry things worth up to $500. Tell us what you'd like to send, and we'll email you as soon as we can take items like it.</p>
+        <div class="fields">
+          <div class="field full"><label for="hv-item">What is it?</label><input id="hv-item" maxlength="200" placeholder="e.g. 27-inch monitor from PB Tech"></div>
+          <div class="field"><label for="hv-val">Roughly what's it worth?</label><input id="hv-val" type="number" inputmode="numeric" min="500" step="50" placeholder="e.g. 900"></div>
+        </div>
+        <div id="hv-msg"></div><button class="btn" type="button" id="hvSend">Let me know</button></div>
+    </details></div>
     <div id="j-done"></div>
   </div></section>`;
 }
@@ -731,6 +739,17 @@ document.addEventListener("click", async e => {
     return loadMine();
   }
   const cp = e.target.closest("[data-copy]"); if (cp) return copyText(cp.dataset.copy, cp);
+  const hv = e.target.closest("#hvSend");
+  if (hv) {
+    const item = v("hv-item") || v("j-item"), value = Math.round(+v("hv-val")), msg = $("#hv-msg");
+    if (!item) { msg.innerHTML = `<div class="err">Please say what it is.</div>`; return; }
+    if (!(value >= 500)) { msg.innerHTML = `<div class="err">Please enter roughly what it's worth: $500 or more.</div>`; return; }
+    hv.disabled = true;
+    const { error } = await db.from("high_value_requests").insert({ item, value, from_town: v("j-from") || null, to_town: v("j-to") || null });
+    if (error) { hv.disabled = false; msg.innerHTML = `<div class="err">${niceError(error)}</div>`; return; }
+    $("#hvBox .hv").innerHTML = `<div class="ok"><p class="sub">Thanks. We'll email you when we can carry items worth $${value}.</p></div>`;
+    return;
+  }
   const ua = e.target.closest("[data-unalert]"); if (ua) { await db.from("route_alerts").delete().eq("id", ua.dataset.unalert); return loadAlerts(); }
   const ag2 = e.target.closest("[data-again-job]");
   if (ag2) { const { data } = await db.from("jobs").select("*").eq("id", ag2.dataset.againJob).single(); if (data) { prefill = data; sendMode = data.kind; go("send"); } return; }

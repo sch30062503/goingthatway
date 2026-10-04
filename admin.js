@@ -1,7 +1,7 @@
 // Going That Way: admin page. Sign in with the email + password created in Supabase.
 const db = makeClient();
 const cfg = window.GTW_CONFIG || {};
-let tab = "pay", data = { jobs: [], trips: [], biz: [], profiles: [], reports: [], oldPhotos: [] };
+let tab = "pay", data = { jobs: [], trips: [], biz: [], profiles: [], reports: [], oldPhotos: [], highValue: [] };
 
 const T = {
   payReminder: j => `Hi ${j.sender_name}, it's Going That Way. Your job (${j.item}, ${j.from_town} to ${j.to_town}, by ${fmtDate(j.window_end)}) goes live once it's paid: $${Math.round(j.price_estimate || 0)} to ${cfg.BANK_NAME || "Going That Way"} ${cfg.BANK_ACCOUNT || "(account)"}, reference ${jobRef(j)}. We hold it until it's delivered.`,
@@ -94,17 +94,18 @@ function mountAdminTs() {
   adminTs = window.turnstile.render(el, { sitekey: cfg.TURNSTILE_SITE_KEY, theme: "auto" });
 }
 async function load() {
-  const [j, t, b, p, rp, op] = await Promise.all([
+  const [j, t, b, p, rp, op, hv] = await Promise.all([
     db.from("jobs").select("*").order("created_at", { ascending: false }),
     db.from("trips").select("*").order("trip_date"),
     db.from("business_interest").select("*").order("created_at", { ascending: false }),
     db.from("profiles").select("*"),
     db.from("job_reports").select("*").order("created_at", { ascending: false }),
     db.from("job_photos").select("id,path,created_at").lt("created_at", new Date(Date.now() - 365 * 864e5).toISOString()),
+    db.from("high_value_requests").select("*").order("created_at", { ascending: false }),
   ]);
   const err = j.error || t.error || b.error || p.error;
   if (err) { $("#view").innerHTML = `<div class="err">Couldn't load data: ${esc(err.message)}. Have you run the latest database update?</div>`; return; }
-  data = { jobs: j.data, trips: t.data, biz: b.data, profiles: p.data, reports: rp.error ? [] : rp.data, oldPhotos: op.error ? [] : op.data };
+  data = { jobs: j.data, trips: t.data, biz: b.data, profiles: p.data, reports: rp.error ? [] : rp.data, oldPhotos: op.error ? [] : op.data, highValue: hv.error ? [] : hv.data };
   render();
 }
 
@@ -265,6 +266,17 @@ function accounts() {
     ${data.oldPhotos.length ? `<p class="sub"><b>${data.oldPhotos.length}</b> photo${data.oldPhotos.length === 1 ? " is" : "s are"} over 12 months old.</p><div class="acts"><button class="btn small" id="cleanPhotos">Delete ${data.oldPhotos.length} old photo${data.oldPhotos.length === 1 ? "" : "s"}</button></div>` : `<p class="fine">None to delete.</p>`}
   </div>`;
 }
+function overView() {
+  const r = data.highValue; if (!r.length) return `<div class="empty">No requests yet. They appear here when someone wants to send something worth more than $500.</div>`;
+  const people = new Set(r.map(x => x.user_id)).size, total = r.reduce((n, x) => n + x.value, 0);
+  const since = new Date(Date.now() - 30 * 864e5).toISOString(), recent = r.filter(x => x.created_at >= since).length;
+  return `<div class="card"><h3>Demand for items over $500</h3>
+    <div class="tiles"><div><span class="label">Requests</span><b class="num">${r.length}</b></div><div><span class="label">In the last 30 days</span><b class="num">${recent}</b></div>
+      <div><span class="label">People</span><b class="num">${people}</b></div><div><span class="label">Total value</span><b class="num">$${total.toLocaleString("en-NZ")}</b></div></div>
+    <p class="fine">These are jobs we couldn't take because of the $500 trial limit. When this list grows steadily, it's time to get goods-in-transit insurance quotes.</p></div>
+    ${r.map(x => { const p = profileOf(x.user_id); return `<div class="card"><div class="row"><span class="item">${esc(x.item)}</span><b class="num">$${x.value.toLocaleString("en-NZ")}</b></div>
+      <p class="sub">${esc(x.from_town || "?")} → ${esc(x.to_town || "?")} · ${new Date(x.created_at).toLocaleDateString("en-NZ")} · ${esc(p.name || "")} ${p.email ? "· " + esc(p.email) : ""}</p></div>`; }).join("")}`;
+}
 function csvDownload(name, rows) {
   const cell = v => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const blob = new Blob(["﻿" + rows.map(r => r.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -294,7 +306,7 @@ function render() {
   const owed = data.jobs.filter(j => DRIVER_OWED.includes(j.status) && ["paid", "part_refunded"].includes(j.payment) && !j.driver_paid).length;
   const urgent = data.jobs.filter(j => j.urgent && ["new", "open"].includes(j.status) && j.window_end >= todayISO());
   const probs = data.reports.filter(r => r.status === "open");
-  const tabs = [["urgent", "Urgent", urgent.length], ["problems", "Problems", probs.length], ["pay", "Payments to check", toPay.length], ["ids", "ID checks", idChecks.length], ["drivers", "Driver checks", drChecks.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0], ["accounts", "Accounts", 0]];
+  const tabs = [["urgent", "Urgent", urgent.length], ["problems", "Problems", probs.length], ["pay", "Payments to check", toPay.length], ["ids", "ID checks", idChecks.length], ["drivers", "Driver checks", drChecks.length], ["live", "Live jobs", live.length], ["trips", "Trips", upcoming.length], ["payouts", "Payouts", owed], ["biz", "Businesses", data.biz.length], ["past", "Past", 0], ["accounts", "Accounts", 0], ["over500", "Over $500", data.highValue.length]];
   const body = {
     urgent: urgent.map(urgentCard).join("") || `<div class="empty">No urgent jobs waiting.</div>`,
     problems: (probs.map(reportCard).join("") || `<div class="empty">No open problems.</div>`) + (data.reports.some(r => r.status === "resolved") ? `<div class="label" style="margin-top:12px">Sorted</div>` + data.reports.filter(r => r.status === "resolved").slice(0, 20).map(reportCard).join("") : ""),
@@ -307,6 +319,7 @@ function render() {
     trips: upcoming.map(tripCard).join("") || `<div class="empty">No upcoming trips.</div>`,
     payouts: payouts(),
     accounts: accounts(),
+    over500: overView(),
     biz: data.biz.map(bizCard).join("") || `<div class="empty">No businesses yet.</div>`,
     past: J(["delivered", "cancelled", "no_show", "declined"]).map(jobCard).join("") || `<div class="empty">Nothing yet.</div>`,
   }[tab];
