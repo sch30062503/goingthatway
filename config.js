@@ -15,7 +15,7 @@ window.GTW_CONFIG = {
   // Cloudflare Turnstile "I'm human" check on sign-up and sign-in (public site key; leave blank to switch off)
   TURNSTILE_SITE_KEY: "0x4AAAAAAFMrWojyEB1sWKps",
   // Business bank account for senders to pay into (appears in the text you send them)
-  BANK_ACCOUNT: "00-0000-0000000-00",
+  BANK_ACCOUNT: "02-0733-0217119-006",
   BANK_NAME: "Going That Way",
   // The web address shown in messages buyers send to sellers
   SITE_NAME: "goingthatway.co.nz",
